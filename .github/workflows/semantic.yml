@@ -1,4 +1,4 @@
-name: "Check Semantic Commit"
+name: bug fix
 
 on:
   pull_request:
