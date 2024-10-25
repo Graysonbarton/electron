@@ -1,8 +1,11 @@
-import { expect } from 'chai';
 import { app, contentTracing, TraceConfig, TraceCategoriesAndOptions } from 'electron/main';
+
+import { expect } from 'chai';
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
+
 import { ifdescribe } from './lib/spec-helpers';
 
 // FIXME: The tests are skipped on linux arm/arm64
@@ -25,7 +28,12 @@ ifdescribe(!(['arm', 'arm64'].includes(process.arch)) || (process.platform !== '
   });
 
   describe('startRecording', function () {
-    this.timeout(5e3);
+    if (process.platform === 'win32' && process.arch === 'arm64') {
+      // WOA needs more time
+      this.timeout(10e3);
+    } else {
+      this.timeout(5e3);
+    }
 
     const getFileSizeInKiloBytes = (filePath: string) => {
       const stats = fs.statSync(filePath);
@@ -84,7 +92,12 @@ ifdescribe(!(['arm', 'arm64'].includes(process.arch)) || (process.platform !== '
   });
 
   describe('stopRecording', function () {
-    this.timeout(5e3);
+    if (process.platform === 'win32' && process.arch === 'arm64') {
+      // WOA needs more time
+      this.timeout(10e3);
+    } else {
+      this.timeout(5e3);
+    }
 
     it('does not crash on empty string', async () => {
       const options = {

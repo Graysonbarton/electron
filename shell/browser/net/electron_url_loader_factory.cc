@@ -4,7 +4,6 @@
 
 #include "shell/browser/net/electron_url_loader_factory.h"
 
-#include <list>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -34,6 +33,7 @@
 #include "shell/common/gin_converters/gurl_converter.h"
 #include "shell/common/gin_converters/net_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
+#include "shell/common/gin_helper/dictionary.h"
 #include "third_party/blink/public/mojom/loader/resource_load_info.mojom-shared.h"
 
 #include "shell/common/node_includes.h"
@@ -650,11 +650,11 @@ void ElectronURLLoaderFactory::SendContents(
       std::make_unique<mojo::DataPipeProducer>(std::move(producer));
   auto* producer_ptr = write_data->producer.get();
 
-  base::StringPiece string_piece(write_data->data);
+  std::string_view string_view(write_data->data);
   producer_ptr->Write(
       std::make_unique<mojo::StringDataSource>(
-          string_piece, mojo::StringDataSource::AsyncWritingMode::
-                            STRING_STAYS_VALID_UNTIL_COMPLETION),
+          string_view, mojo::StringDataSource::AsyncWritingMode::
+                           STRING_STAYS_VALID_UNTIL_COMPLETION),
       base::BindOnce(OnWrite, std::move(write_data)));
 }
 

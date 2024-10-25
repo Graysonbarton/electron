@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "base/command_line.h"
+#include "base/containers/span.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "base/strings/utf_string_conversions.h"
 #include "components/spellcheck/renderer/spellcheck.h"
@@ -111,7 +111,7 @@ bool SpellCheckWord(content::RenderFrame* render_frame,
   RendererClientBase* client = RendererClientBase::Get();
 
   mojo::Remote<spellcheck::mojom::SpellCheckHost> spellcheck_host;
-  render_frame->GetBrowserInterfaceBroker()->GetInterface(
+  render_frame->GetBrowserInterfaceBroker().GetInterface(
       spellcheck_host.BindNewPipeAndPassReceiver());
   if (!spellcheck_host.is_bound())
     return false;
@@ -248,8 +248,8 @@ class ScriptExecutionCallback {
 
 class FrameSetSpellChecker : public content::RenderFrameVisitor {
  public:
-  FrameSetSpellChecker(SpellCheckClient* spell_check_client,
-                       content::RenderFrame* main_frame)
+  FrameSetSpellChecker(raw_ptr<SpellCheckClient> spell_check_client,
+                       raw_ptr<content::RenderFrame> main_frame)
       : spell_check_client_(spell_check_client), main_frame_(main_frame) {
     content::RenderFrame::ForEach(this);
     main_frame->GetWebFrame()->SetSpellCheckPanelHostClient(spell_check_client);
@@ -268,11 +268,11 @@ class FrameSetSpellChecker : public content::RenderFrameVisitor {
   }
 
  private:
-  SpellCheckClient* spell_check_client_;
-  content::RenderFrame* main_frame_;
+  raw_ptr<SpellCheckClient> spell_check_client_;
+  raw_ptr<content::RenderFrame> main_frame_;
 };
 
-class SpellCheckerHolder final : public content::RenderFrameObserver {
+class SpellCheckerHolder final : private content::RenderFrameObserver {
  public:
   // Find existing holder for the |render_frame|.
   static SpellCheckerHolder* FromRenderFrame(
@@ -327,10 +327,8 @@ class SpellCheckerHolder final : public content::RenderFrameObserver {
   std::unique_ptr<SpellCheckClient> spell_check_client_;
 };
 
-}  // namespace
-
-class WebFrameRenderer : public gin::Wrappable<WebFrameRenderer>,
-                         public content::RenderFrameObserver {
+class WebFrameRenderer final : public gin::Wrappable<WebFrameRenderer>,
+                               private content::RenderFrameObserver {
  public:
   static gin::WrapperInfo kWrapperInfo;
 
@@ -471,12 +469,12 @@ class WebFrameRenderer : public gin::Wrappable<WebFrameRenderer>,
       return;
     }
 
-    SetZoomLevel(thrower.isolate(), blink::PageZoomFactorToZoomLevel(factor));
+    SetZoomLevel(thrower.isolate(), blink::ZoomFactorToZoomLevel(factor));
   }
 
   double GetZoomFactor(v8::Isolate* isolate) {
     double zoom_level = GetZoomLevel(isolate);
-    return blink::PageZoomLevelToZoomFactor(zoom_level);
+    return blink::ZoomLevelToZoomFactor(zoom_level);
   }
 
   v8::Local<v8::Value> GetWebPreference(v8::Isolate* isolate,
@@ -656,7 +654,7 @@ class WebFrameRenderer : public gin::Wrappable<WebFrameRenderer>,
                                              std::move(completion_callback));
 
     render_frame->GetWebFrame()->RequestExecuteScript(
-        blink::DOMWrapperWorld::kMainWorldId, base::make_span(&source, 1u),
+        blink::DOMWrapperWorld::kMainWorldId, base::span_from_ref(source),
         has_user_gesture ? blink::mojom::UserActivationOption::kActivate
                          : blink::mojom::UserActivationOption::kDoNotActivate,
         blink::mojom::EvaluationTiming::kSynchronous,
@@ -806,7 +804,6 @@ class WebFrameRenderer : public gin::Wrappable<WebFrameRenderer>,
 #endif
 
   void ClearCache(v8::Isolate* isolate) {
-    isolate->IdleNotificationDeadline(0.5);
     blink::WebCache::Clear();
     base::MemoryPressureListener::NotifyMemoryPressure(
         base::MemoryPressureListener::MEMORY_PRESSURE_LEVEL_CRITICAL);
@@ -903,6 +900,7 @@ class WebFrameRenderer : public gin::Wrappable<WebFrameRenderer>,
     return render_frame->GetRoutingID();
   }
 };
+}  // namespace
 
 gin::WrapperInfo WebFrameRenderer::kWrapperInfo = {gin::kEmbedderNativeGin};
 

@@ -1,9 +1,9 @@
-import * as path from 'path';
-import { pathToFileURL } from 'url';
 import { IPC_MESSAGES } from '@electron/internal/common/ipc-messages';
-
 import type * as ipcRendererInternalModule from '@electron/internal/renderer/ipc-renderer-internal';
 import type * as ipcRendererUtilsModule from '@electron/internal/renderer/ipc-renderer-internal-utils';
+
+import * as path from 'path';
+import { pathToFileURL } from 'url';
 
 const Module = require('module') as NodeJS.ModuleInternal;
 
@@ -150,12 +150,12 @@ if (cjsPreloads.length) {
   }
 }
 if (esmPreloads.length) {
-  const { loadESM } = __non_webpack_require__('internal/process/esm_loader');
+  const { runEntryPointWithESMLoader } = __non_webpack_require__('internal/modules/run_main');
 
-  loadESM(async (esmLoader: any) => {
+  runEntryPointWithESMLoader(async (cascadedLoader: any) => {
     // Load the preload scripts.
     for (const preloadScript of esmPreloads) {
-      await esmLoader.import(pathToFileURL(preloadScript).toString(), undefined, Object.create(null)).catch((err: Error) => {
+      await cascadedLoader.import(pathToFileURL(preloadScript).toString(), undefined, Object.create(null)).catch((err: Error) => {
         console.error(`Unable to load preload script: ${preloadScript}`);
         console.error(err);
 

@@ -38,8 +38,8 @@ gfx::Rect ScreenToDIPRect(HWND hwnd, const gfx::Rect& pixel_bounds);
 #endif
 
 class NativeWindowViews : public NativeWindow,
-                          public views::WidgetObserver,
-                          public ui::EventHandler {
+                          private views::WidgetObserver,
+                          private ui::EventHandler {
  public:
   NativeWindowViews(const gin_helper::Dictionary& options,
                     NativeWindow* parent);
@@ -102,7 +102,7 @@ class NativeWindowViews : public NativeWindow,
   std::string GetTitle() const override;
   void FlashFrame(bool flash) override;
   void SetSkipTaskbar(bool skip) override;
-  void SetExcludedFromShownWindowsMenu(bool excluded) override;
+  void SetExcludedFromShownWindowsMenu(bool excluded) override {}
   bool IsExcludedFromShownWindowsMenu() const override;
   void SetSimpleFullScreen(bool simple_fullscreen) override;
   bool IsSimpleFullScreen() const override;
@@ -167,13 +167,9 @@ class NativeWindowViews : public NativeWindow,
 
 #if BUILDFLAG(IS_WIN)
   TaskbarHost& taskbar_host() { return taskbar_host_; }
+  void UpdateThickFrame();
 #endif
 
-#if BUILDFLAG(IS_WIN)
-  bool IsWindowControlsOverlayEnabled() const {
-    return (title_bar_style_ == NativeWindowViews::TitleBarStyle::kHidden) &&
-           titlebar_overlay_;
-  }
   SkColor overlay_button_color() const { return overlay_button_color_; }
   void set_overlay_button_color(SkColor color) {
     overlay_button_color_ = color;
@@ -182,9 +178,6 @@ class NativeWindowViews : public NativeWindow,
   void set_overlay_symbol_color(SkColor color) {
     overlay_symbol_color_ = color;
   }
-
-  void UpdateThickFrame();
-#endif
 
  private:
   // views::WidgetObserver:
@@ -231,15 +224,14 @@ class NativeWindowViews : public NativeWindow,
   void SetEnabledInternal(bool enabled);
 
   // NativeWindow:
-  void HandleKeyboardEvent(
-      content::WebContents*,
-      const content::NativeWebKeyboardEvent& event) override;
+  void HandleKeyboardEvent(content::WebContents*,
+                           const input::NativeWebKeyboardEvent& event) override;
 
   // ui::EventHandler:
   void OnMouseEvent(ui::MouseEvent* event) override;
 
   // Returns the restore state for the window.
-  ui::WindowShowState GetRestoredState();
+  ui::mojom::WindowShowState GetRestoredState();
 
   // Maintain window placement.
   void MoveBehindTaskBarIfNeeded();
@@ -264,9 +256,13 @@ class NativeWindowViews : public NativeWindow,
   std::unique_ptr<EventDisabler> event_disabler_;
 #endif
 
+  // The color to use as the theme and symbol colors respectively for WCO.
+  SkColor overlay_button_color_ = SkColor();
+  SkColor overlay_symbol_color_ = SkColor();
+
 #if BUILDFLAG(IS_WIN)
 
-  ui::WindowShowState last_window_state_;
+  ui::mojom::WindowShowState last_window_state_;
 
   gfx::Rect last_normal_placement_bounds_;
 
@@ -306,11 +302,6 @@ class NativeWindowViews : public NativeWindow,
   bool is_moving_ = false;
 
   std::optional<gfx::Rect> pending_bounds_change_;
-
-  // The color to use as the theme and symbol colors respectively for Window
-  // Controls Overlay if enabled on Windows.
-  SkColor overlay_button_color_;
-  SkColor overlay_symbol_color_;
 
   // The message ID of the "TaskbarCreated" message, sent to us when we need to
   // reset our thumbar buttons.

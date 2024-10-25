@@ -5,6 +5,7 @@
 #include "shell/browser/ui/cocoa/electron_ns_window.h"
 
 #include "base/strings/sys_string_conversions.h"
+#include "electron/mas.h"
 #include "shell/browser/native_window_mac.h"
 #include "shell/browser/ui/cocoa/electron_preview_item.h"
 #include "shell/browser/ui/cocoa/electron_touch_bar.h"
@@ -200,11 +201,6 @@ void SwizzleSwipeWithEvent(NSView* view, SEL swiz_selector) {
 }
 
 - (NSRect)constrainFrameRect:(NSRect)frameRect toScreen:(NSScreen*)screen {
-  // We initialize the window in headless mode to allow painting before it is
-  // shown, but we don't want the headless behavior of allowing the window to be
-  // placed unconstrained.
-  self.isHeadless = false;
-
   // Resizing is disabled.
   if (electron::ScopedDisableResize::IsResizeDisabled())
     return [self frame];

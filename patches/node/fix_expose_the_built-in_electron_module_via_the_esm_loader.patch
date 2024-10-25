@@ -6,10 +6,10 @@ Subject: fix: expose the built-in electron module via the ESM loader
 This allows usage of `import { app } from 'electron'` and `import('electron')` natively in the browser + non-sandboxed renderer
 
 diff --git a/lib/internal/modules/esm/get_format.js b/lib/internal/modules/esm/get_format.js
-index 1931688e85d05ee2da4f88efb05d635cb43be233..afccc24392abff9eef2b9953fcffeb79ee71ad15 100644
+index 1fe5564545dbc86d7f2968274a25ee1579bcbf28..b876af21a0e97ae06dc344d9f78c8f5c7e403d43 100644
 --- a/lib/internal/modules/esm/get_format.js
 +++ b/lib/internal/modules/esm/get_format.js
-@@ -30,6 +30,7 @@ const protocolHandlers = {
+@@ -31,6 +31,7 @@ const protocolHandlers = {
    'http:': getHttpProtocolModuleFormat,
    'https:': getHttpProtocolModuleFormat,
    'node:'() { return 'builtin'; },
@@ -18,7 +18,7 @@ index 1931688e85d05ee2da4f88efb05d635cb43be233..afccc24392abff9eef2b9953fcffeb79
  
  /**
 diff --git a/lib/internal/modules/esm/load.js b/lib/internal/modules/esm/load.js
-index 5239bc8ed883a54df206d73c5dc0b70942c4f3df..6a15fcae677b3bda58fc85f705862bbcd9feec9d 100644
+index 7b77af35a1dfebf6ad45ace521f1a55b5fa18293..ac24cf305bd5995ad13b37ee36f9e1fe3589c5d7 100644
 --- a/lib/internal/modules/esm/load.js
 +++ b/lib/internal/modules/esm/load.js
 @@ -142,7 +142,7 @@ async function defaultLoad(url, context = kEmptyObject) {
@@ -30,7 +30,7 @@ index 5239bc8ed883a54df206d73c5dc0b70942c4f3df..6a15fcae677b3bda58fc85f705862bbc
          // For backward compatibility reasons, we need to discard the source in
          // order for the CJS loader to re-fetch it.
          source = null;
-@@ -224,6 +224,7 @@ function throwIfUnsupportedURLScheme(parsed, experimentalNetworkImports) {
+@@ -234,6 +234,7 @@ function throwIfUnsupportedURLScheme(parsed, experimentalNetworkImports) {
      protocol !== 'file:' &&
      protocol !== 'data:' &&
      protocol !== 'node:' &&
@@ -38,7 +38,7 @@ index 5239bc8ed883a54df206d73c5dc0b70942c4f3df..6a15fcae677b3bda58fc85f705862bbc
      (
        !experimentalNetworkImports ||
        (
-@@ -232,7 +233,7 @@ function throwIfUnsupportedURLScheme(parsed, experimentalNetworkImports) {
+@@ -242,7 +243,7 @@ function throwIfUnsupportedURLScheme(parsed, experimentalNetworkImports) {
        )
      )
    ) {
@@ -48,7 +48,7 @@ index 5239bc8ed883a54df206d73c5dc0b70942c4f3df..6a15fcae677b3bda58fc85f705862bbc
        ArrayPrototypePush(schemes, 'https', 'http');
      }
 diff --git a/lib/internal/modules/esm/resolve.js b/lib/internal/modules/esm/resolve.js
-index b56ad6cc833f00f58bf3925e9fd82a8f5b7b9bd7..8c9e8bfb4e828d044b236a11c0890cb4f0161050 100644
+index e73a8ad60a13925d6773c32cead8d04ec9d96ee7..52cdb7d5e14a18ed7b1b65e429729cf47dce3f98 100644
 --- a/lib/internal/modules/esm/resolve.js
 +++ b/lib/internal/modules/esm/resolve.js
 @@ -741,6 +741,8 @@ function packageImportsResolve(name, base, conditions) {
@@ -73,10 +73,10 @@ index b56ad6cc833f00f58bf3925e9fd82a8f5b7b9bd7..8c9e8bfb4e828d044b236a11c0890cb4
      parsePackageName(specifier, base);
  
 diff --git a/lib/internal/modules/esm/translators.js b/lib/internal/modules/esm/translators.js
-index ca547699d00ed125fd3b9d383d67b9606f89d199..11d64bfd66259a5c5cf089de713af35ec9cde2aa 100644
+index 8f4b6b25d8889686d00613fd9821b0aa822a946a..89ca269294ee1afa7f5aeb0ac6b8958f7a8b49d0 100644
 --- a/lib/internal/modules/esm/translators.js
 +++ b/lib/internal/modules/esm/translators.js
-@@ -301,7 +301,7 @@ function createCJSModuleWrap(url, source, isMain, loadCJS = loadCJSModule) {
+@@ -272,7 +272,7 @@ function createCJSModuleWrap(url, source, isMain, loadCJS = loadCJSModule) {
  
    const { exportNames, module } = cjsPreparseModuleExports(filename, source);
    cjsCache.set(url, module);
@@ -85,7 +85,7 @@ index ca547699d00ed125fd3b9d383d67b9606f89d199..11d64bfd66259a5c5cf089de713af35e
      [...exportNames] : ['default', ...exportNames];
  
    if (isMain) {
-@@ -323,8 +323,8 @@ function createCJSModuleWrap(url, source, isMain, loadCJS = loadCJSModule) {
+@@ -294,8 +294,8 @@ function createCJSModuleWrap(url, source, isMain, loadCJS = loadCJSModule) {
        ({ exports } = module);
      }
      for (const exportName of exportNames) {
@@ -96,7 +96,7 @@ index ca547699d00ed125fd3b9d383d67b9606f89d199..11d64bfd66259a5c5cf089de713af35e
          continue;
        }
        // We might trigger a getter -> dont fail.
-@@ -349,6 +349,10 @@ translators.set('require-commonjs', (url, source, isMain) => {
+@@ -329,6 +329,10 @@ translators.set('require-commonjs', (url, source, isMain) => {
    return createCJSModuleWrap(url, source);
  });
  
@@ -108,10 +108,10 @@ index ca547699d00ed125fd3b9d383d67b9606f89d199..11d64bfd66259a5c5cf089de713af35e
  // or as the initial entry point when the ESM loader handles a CommonJS entry.
  translators.set('commonjs', async function commonjsStrategy(url, source,
 diff --git a/lib/internal/url.js b/lib/internal/url.js
-index 428c2f1bec4a8e149b8058406d1393a6690ff31a..979455cb44f5edba6d178a6c36a330d707a2395e 100644
+index e6ed5466b8807a52633d8406824058bdc8c2ce13..e055facddf086eb8fb456b865ce006cdb7602b0a 100644
 --- a/lib/internal/url.js
 +++ b/lib/internal/url.js
-@@ -1457,6 +1457,8 @@ function fileURLToPath(path) {
+@@ -1485,6 +1485,8 @@ function fileURLToPath(path, options = kEmptyObject) {
      path = new URL(path);
    else if (!isURL(path))
      throw new ERR_INVALID_ARG_TYPE('path', ['string', 'URL'], path);
@@ -119,4 +119,4 @@ index 428c2f1bec4a8e149b8058406d1393a6690ff31a..979455cb44f5edba6d178a6c36a330d7
 +    return 'electron';
    if (path.protocol !== 'file:')
      throw new ERR_INVALID_URL_SCHEME('file');
-   return isWindows ? getPathFromURLWin32(path) : getPathFromURLPosix(path);
+   return (windows ?? isWindows) ? getPathFromURLWin32(path) : getPathFromURLPosix(path);

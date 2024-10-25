@@ -16,7 +16,6 @@
 #include "components/pdf/common/constants.h"
 #include "components/prefs/pref_service.h"
 #include "extensions/browser/guest_view/mime_handler_view/mime_handler_view_guest.h"
-#include "shell/browser/electron_browser_context.h"
 #include "url/url_constants.h"
 
 namespace extensions {
@@ -25,8 +24,6 @@ namespace {
 
 namespace IsAllowedLocalFileAccess =
     api::pdf_viewer_private::IsAllowedLocalFileAccess;
-
-namespace SetPdfOcrPref = api::pdf_viewer_private::SetPdfOcrPref;
 
 namespace SetPdfPluginAttributes =
     api::pdf_viewer_private::SetPdfPluginAttributes;
@@ -139,32 +136,6 @@ PdfViewerPrivateSetPdfDocumentTitleFunction::Run() {
       base::UTF8ToUTF16(params->title));
 
   return RespondNow(NoArguments());
-}
-
-PdfViewerPrivateIsPdfOcrAlwaysActiveFunction::
-    PdfViewerPrivateIsPdfOcrAlwaysActiveFunction() = default;
-
-PdfViewerPrivateIsPdfOcrAlwaysActiveFunction::
-    ~PdfViewerPrivateIsPdfOcrAlwaysActiveFunction() = default;
-
-// TODO(codebytere): enable when https://crbug.com/1393069 works properly.
-ExtensionFunction::ResponseAction
-PdfViewerPrivateIsPdfOcrAlwaysActiveFunction::Run() {
-  return RespondNow(WithArguments(false));
-}
-
-PdfViewerPrivateSetPdfOcrPrefFunction::PdfViewerPrivateSetPdfOcrPrefFunction() =
-    default;
-
-PdfViewerPrivateSetPdfOcrPrefFunction::
-    ~PdfViewerPrivateSetPdfOcrPrefFunction() = default;
-
-// TODO(codebytere): enable when https://crbug.com/1393069 works properly.
-ExtensionFunction::ResponseAction PdfViewerPrivateSetPdfOcrPrefFunction::Run() {
-  std::optional<SetPdfOcrPref::Params> params =
-      SetPdfOcrPref::Params::Create(args());
-  EXTENSION_FUNCTION_VALIDATE(params);
-  return RespondNow(WithArguments(false));
 }
 
 PdfViewerPrivateSetPdfPluginAttributesFunction::

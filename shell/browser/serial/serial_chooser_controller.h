@@ -9,27 +9,29 @@
 #include <vector>
 
 #include "base/memory/weak_ptr.h"
+#include "base/scoped_observation.h"
 #include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/serial_chooser.h"
-#include "content/public/browser/web_contents.h"
-#include "content/public/browser/web_contents_observer.h"
 #include "services/device/public/mojom/serial.mojom-forward.h"
-#include "shell/browser/api/electron_api_session.h"
-#include "shell/browser/serial/electron_serial_delegate.h"
 #include "shell/browser/serial/serial_chooser_context.h"
-#include "third_party/blink/public/mojom/serial/serial.mojom.h"
+#include "third_party/blink/public/mojom/serial/serial.mojom-forward.h"
 
 namespace content {
 class RenderFrameHost;
-}
+class WebContents;
+}  // namespace content
 
 namespace electron {
+
+namespace api {
+class Session;
+}
 
 class ElectronSerialDelegate;
 
 // SerialChooserController provides data for the Serial API permission prompt.
-class SerialChooserController final : public SerialChooserContext::PortObserver,
-                                      public content::WebContentsObserver {
+class SerialChooserController final
+    : private SerialChooserContext::PortObserver {
  public:
   SerialChooserController(
       content::RenderFrameHost* render_frame_host,
@@ -59,6 +61,8 @@ class SerialChooserController final : public SerialChooserContext::PortObserver,
   bool DisplayDevice(const device::mojom::SerialPortInfo& port) const;
   void RunCallback(device::mojom::SerialPortInfoPtr port);
   void OnDeviceChosen(const std::string& port_id);
+
+  base::WeakPtr<content::WebContents> web_contents_;
 
   std::vector<blink::mojom::SerialPortFilterPtr> filters_;
   std::vector<::device::BluetoothUUID> allowed_bluetooth_service_class_ids_;

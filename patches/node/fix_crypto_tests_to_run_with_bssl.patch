@@ -31,7 +31,7 @@ index 4e3c32fdcd23fbe3e74bd5e624b739d224689f33..19d65aae7fa8ec9f9b907733ead17a20
  // Test Parallel Execution w/ KeyObject is threadsafe in openssl3
  {
 diff --git a/test/parallel/test-crypto-authenticated.js b/test/parallel/test-crypto-authenticated.js
-index 6178445adbc634160c3c3ca699a36868f894e544..ff4dc2f7d527b5eb1fa442ba6b0f9ba04af39357 100644
+index 59dd3b69c4bdf6dbd7b5e4f03df74caac551d459..1e0f9ce4c979683530afdf83ac3dc095acad2eb8 100644
 --- a/test/parallel/test-crypto-authenticated.js
 +++ b/test/parallel/test-crypto-authenticated.js
 @@ -48,7 +48,9 @@ const errMessages = {
@@ -381,7 +381,7 @@ index fcf1922bcdba733af6c22f142db4f7b099947757..9f72ae4e41a113e752f40795103c2af5
    assert.throws(() => crypto.createDiffieHellman('abcdef', g), ex);
    assert.throws(() => crypto.createDiffieHellman('abcdef', 'hex', g), ex);
 diff --git a/test/parallel/test-crypto-dh.js b/test/parallel/test-crypto-dh.js
-index 3b738b7f47ec59ba718a92e3a0024fed45a9c87c..fabf5775a263804f5974b10cf73c6886d59bf1fa 100644
+index 8ae0a002fec0944737d2c6ae73fc8956e41beb50..5b37236a6c2f1ec1761d8143c8ea6a7e2a837a7a 100644
 --- a/test/parallel/test-crypto-dh.js
 +++ b/test/parallel/test-crypto-dh.js
 @@ -55,18 +55,17 @@ const crypto = require('crypto');
@@ -411,7 +411,7 @@ index 3b738b7f47ec59ba718a92e3a0024fed45a9c87c..fabf5775a263804f5974b10cf73c6886
      };
    }
  
-@@ -99,10 +98,16 @@ const crypto = require('crypto');
+@@ -100,10 +99,16 @@ const crypto = require('crypto');
  // Through a fluke of history, g=0 defaults to DH_GENERATOR (2).
  {
    const g = 0;
@@ -549,7 +549,7 @@ index 1785f5eef3d202976666081d09850ed744d83446..e88227a215ba4f7fa196f7642ae694a5
    });
  
 diff --git a/test/parallel/test-crypto-rsa-dsa.js b/test/parallel/test-crypto-rsa-dsa.js
-index 438037acc867c2bd6e34ffdcd1e706f8d0ff6a57..65611c79d0e93bf7f91948b2a0105cdc3192b2f2 100644
+index 5f4fafdfffbf726b7cb39c472baa3df25c9794cf..73bb53b0405b20f51b13326cc70e52755c674366 100644
 --- a/test/parallel/test-crypto-rsa-dsa.js
 +++ b/test/parallel/test-crypto-rsa-dsa.js
 @@ -28,12 +28,11 @@ const dsaPkcs8KeyPem = fixtures.readKey('dsa_private_pkcs8.pem');
@@ -570,18 +570,17 @@ index 438037acc867c2bd6e34ffdcd1e706f8d0ff6a57..65611c79d0e93bf7f91948b2a0105cdc
  };
  
  const decryptError = common.hasOpenSSL3 ?
-@@ -221,8 +220,8 @@ function test_rsa(padding, encryptOaepHash, decryptOaepHash) {
-     oaepHash: encryptOaepHash
+@@ -222,7 +221,8 @@ function test_rsa(padding, encryptOaepHash, decryptOaepHash) {
    }, bufferToEncrypt);
  
--
+ 
 -  if (padding === constants.RSA_PKCS1_PADDING) {
 +  // BoringSSL does not support RSA_PKCS1_PADDING.
 +  if (false) {
-     assert.throws(() => {
-       crypto.privateDecrypt({
-         key: rsaKeyPem,
-@@ -415,7 +414,7 @@ assert.throws(() => {
+     if (!process.config.variables.node_shared_openssl) {
+       assert.throws(() => {
+         crypto.privateDecrypt({
+@@ -466,7 +466,7 @@ assert.throws(() => {
    assert.strictEqual(verify2.verify(publicKey, signature, 'hex'), true);
  }
  
@@ -590,13 +589,26 @@ index 438037acc867c2bd6e34ffdcd1e706f8d0ff6a57..65611c79d0e93bf7f91948b2a0105cdc
  //
  // Test DSA signing and verification
  //
-@@ -490,3 +489,4 @@ const input = 'I AM THE WALRUS';
+@@ -541,3 +541,4 @@ const input = 'I AM THE WALRUS';
  
    assert.strictEqual(verify.verify(dsaPubPem, signature, 'hex'), true);
  }
 +*/
+diff --git a/test/parallel/test-crypto-scrypt.js b/test/parallel/test-crypto-scrypt.js
+index 61bd65fc92678c24baa3c0eb9ffb1ead64ace70b..cb690351696a811210b9d990ee4cde3cfb2a3446 100644
+--- a/test/parallel/test-crypto-scrypt.js
++++ b/test/parallel/test-crypto-scrypt.js
+@@ -178,7 +178,7 @@ for (const options of bad) {
+ 
+ for (const options of toobig) {
+   const expected = {
+-    message: /Invalid scrypt params:.*memory limit exceeded/,
++    message: /Invalid scrypt params/,
+     code: 'ERR_CRYPTO_INVALID_SCRYPT_PARAMS',
+   };
+   assert.throws(() => crypto.scrypt('pass', 'salt', 1, options, () => {}),
 diff --git a/test/parallel/test-crypto-sign-verify.js b/test/parallel/test-crypto-sign-verify.js
-index b39ec22dceb5b704f8c262bd38163d93ac1a3b47..89cfa9fc49719e5a6f2c5b96f25c61340286cadb 100644
+index 9dd586a1a1f9a00d9bb0af5b0532e81e7b96a5ce..1a0d0cfc09fb61d65472723ba54e1d0be69b5c68 100644
 --- a/test/parallel/test-crypto-sign-verify.js
 +++ b/test/parallel/test-crypto-sign-verify.js
 @@ -28,6 +28,7 @@ const keySize = 2048;

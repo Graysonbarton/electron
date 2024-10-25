@@ -17,6 +17,8 @@ declare namespace Electron {
     setVersion(version: string): void;
     setDesktopName(name: string): void;
     setAppPath(path: string | null): void;
+    _clientCertRequestPasswordHandler: ((params: ClientCertRequestParams) => Promise<string>) | null;
+    on(event: '-client-certificate-request-password', listener: (event: Event<ClientCertRequestParams>, callback: (password: string) => void) => Promise<void>): this;
   }
 
   interface AutoUpdater {
@@ -27,22 +29,23 @@ declare namespace Electron {
 
   interface BaseWindow {
     _init(): void;
-  }
-
-  interface BrowserWindow {
-    _init(): void;
     _touchBar: Electron.TouchBar | null;
     _setTouchBarItems: (items: TouchBarItemType[]) => void;
     _setEscapeTouchBarItem: (item: TouchBarItemType | {}) => void;
     _refreshTouchBarItem: (itemID: string) => void;
+    on(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
+    removeListener(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
+  }
+
+  interface BrowserWindow extends BaseWindow {
+    _init(): void;
     _getWindowButtonVisibility: () => boolean;
     _getAlwaysOnTopLevel: () => string;
     devToolsWebContents: WebContents;
     frameName: string;
+    _browserViews: BrowserView[];
     on(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
     removeListener(event: '-touch-bar-interaction', listener: (event: Event, itemID: string, details: any) => void): this;
-
-    _browserViews: BrowserView[];
   }
 
   interface BrowserView {
@@ -65,7 +68,7 @@ declare namespace Electron {
   }
 
   interface TouchBar {
-    _removeFromWindow: (win: BrowserWindow) => void;
+    _removeFromWindow: (win: BaseWindow) => void;
   }
 
   interface WebContents {
@@ -85,9 +88,19 @@ declare namespace Electron {
     _print(options: any, callback?: (success: boolean, failureReason: string) => void): void;
     _getPrintersAsync(): Promise<Electron.PrinterInfo[]>;
     _init(): void;
-    _getNavigationEntryAtIndex(index: number): Electron.EntryAtIndex | null;
+    _getNavigationEntryAtIndex(index: number): Electron.NavigationEntry | null;
     _getActiveIndex(): number;
     _historyLength(): number;
+    _canGoBack(): boolean;
+    _canGoForward(): boolean;
+    _canGoToOffset(): boolean;
+    _goBack(): void;
+    _goForward(): void;
+    _goToOffset(index: number): void;
+    _goToIndex(index: number): void;
+    _removeNavigationEntryAtIndex(index: number): boolean;
+    _getHistory(): Electron.NavigationEntry[];
+    _clearHistory():void
     canGoToIndex(index: number): boolean;
     destroy(): void;
     // <webview>
@@ -112,6 +125,10 @@ declare namespace Electron {
     disablePopups?: boolean;
     embedder?: Electron.WebContents;
     type?: 'backgroundPage' | 'window' | 'browserView' | 'remote' | 'webview' | 'offscreen';
+  }
+
+  interface Session {
+    _setDisplayMediaRequestHandler: Electron.Session['setDisplayMediaRequestHandler'];
   }
 
   type CreateWindowFunction = (options: BrowserWindowConstructorOptions) => WebContents;
@@ -160,10 +177,12 @@ declare namespace Electron {
 
   interface IpcMainEvent {
     _replyChannel: ReplyChannel;
+    frameTreeNodeId?: number;
   }
 
   interface IpcMainInvokeEvent {
     _replyChannel: ReplyChannel;
+    frameTreeNodeId?: number;
   }
 
   // Deprecated / undocumented BrowserWindow methods
@@ -185,6 +204,33 @@ declare namespace Electron {
   interface Protocol {
     registerProtocol(scheme: string, handler: any): boolean;
     interceptProtocol(scheme: string, handler: any): boolean;
+  }
+
+  interface WebContents {
+    on(event: '-new-window', listener: (event: Electron.Event, url: string, frameName: string, disposition: Electron.HandlerDetails['disposition'],
+      rawFeatures: string, referrer: Electron.Referrer, postData: LoadURLOptions['postData']) => void): this;
+    on(event: '-add-new-contents', listener: (event: Event, webContents: Electron.WebContents, disposition: string,
+      _userGesture: boolean, _left: number, _top: number, _width: number, _height: number, url: string, frameName: string,
+      referrer: Electron.Referrer, rawFeatures: string, postData: LoadURLOptions['postData']) => void): this;
+    on(event: '-will-add-new-contents', listener: (event: Electron.Event, url: string, frameName: string, rawFeatures: string, disposition: Electron.HandlerDetails['disposition'], referrer: Electron.Referrer, postData: LoadURLOptions['postData']) => void): this;
+    on(event: '-ipc-message', listener: (event: Electron.IpcMainEvent, internal: boolean, channel: string, args: any[]) => void): this;
+    on(event: '-ipc-message-sync', listener: (event: Electron.IpcMainEvent, internal: boolean, channel: string, args: any[]) => void): this;
+    on(event: '-ipc-invoke', listener: (event: Electron.IpcMainInvokeEvent, internal: boolean, channel: string, args: any[]) => void): this;
+    on(event: '-ipc-ports', listener: (event: Electron.IpcMainEvent, internal: boolean, channel: string, message: any, ports: any[]) => void): this;
+    on(event: '-run-dialog', listener: (info: {frame: WebFrameMain, dialogType: 'prompt' | 'confirm' | 'alert', messageText: string, defaultPromptText: string}, callback: (success: boolean, user_input: string) => void) => void): this;
+    on(event: '-cancel-dialogs', listener: () => void): this;
+    on(event: 'ready-to-show', listener: () => void): this;
+    on(event: '-before-unload-fired', listener: (event: Electron.Event, proceed: boolean) => void): this;
+
+    on(event: '-window-visibility-change', listener: (visibilityState: 'hidden' | 'visible') => void): this;
+    removeListener(event: '-window-visibility-change', listener: (visibilityState: 'hidden' | 'visible') => void): this;
+
+    once(event: 'destroyed', listener: (event: Electron.Event) => void): this;
+  }
+
+  interface WebContentsWillFrameNavigateEventParams {
+    processId: number;
+    routingId: number;
   }
 }
 

@@ -1,13 +1,16 @@
-import { BrowserWindow, app } from 'electron/main';
 import { shell } from 'electron/common';
-import { closeAllWindows } from './lib/window-helpers';
-import { ifdescribe, ifit, listen } from './lib/spec-helpers';
+import { BrowserWindow, app } from 'electron/main';
+
+import { expect } from 'chai';
+
+import { once } from 'node:events';
+import * as fs from 'node:fs';
 import * as http from 'node:http';
-import * as fs from 'fs-extra';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { expect } from 'chai';
-import { once } from 'node:events';
+
+import { ifdescribe, ifit, listen } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
 
 describe('shell module', () => {
   describe('shell.openExternal()', () => {
@@ -79,9 +82,9 @@ describe('shell module', () => {
     afterEach(closeAllWindows);
 
     it('moves an item to the trash', async () => {
-      const dir = await fs.mkdtemp(path.resolve(app.getPath('temp'), 'electron-shell-spec-'));
+      const dir = await fs.promises.mkdtemp(path.resolve(app.getPath('temp'), 'electron-shell-spec-'));
       const filename = path.join(dir, 'temp-to-be-deleted');
-      await fs.writeFile(filename, 'dummy-contents');
+      await fs.promises.writeFile(filename, 'dummy-contents');
       await shell.trashItem(filename);
       expect(fs.existsSync(filename)).to.be.false();
     });

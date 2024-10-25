@@ -1,16 +1,19 @@
+import { app, session, BrowserWindow, net, ipcMain, Session, webFrameMain, WebFrameMain } from 'electron/main';
+
+import * as auth from 'basic-auth';
 import { expect } from 'chai';
+import * as send from 'send';
+
+import * as ChildProcess from 'node:child_process';
+import { once } from 'node:events';
+import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import * as path from 'node:path';
-import * as fs from 'node:fs';
-import * as ChildProcess from 'node:child_process';
-import { app, session, BrowserWindow, net, ipcMain, Session, webFrameMain, WebFrameMain } from 'electron/main';
-import * as send from 'send';
-import * as auth from 'basic-auth';
-import { closeAllWindows } from './lib/window-helpers';
-import { defer, listen } from './lib/spec-helpers';
-import { once } from 'node:events';
 import { setTimeout } from 'node:timers/promises';
+
+import { defer, listen } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
 
 describe('session module', () => {
   const fixtures = path.resolve(__dirname, 'fixtures');
@@ -126,24 +129,34 @@ describe('session module', () => {
       expect(cs.some(c => c.name === name && c.value === value)).to.equal(true);
     });
 
-    it('yields an error when setting a cookie with missing required fields', async () => {
+    it('rejects when setting a cookie with missing required fields', async () => {
       const { cookies } = session.defaultSession;
       const name = '1';
       const value = '1';
 
       await expect(
         cookies.set({ url: '', name, value })
-      ).to.eventually.be.rejectedWith('Failed to set cookie with an invalid domain attribute');
+      ).to.eventually.be.rejectedWith('Failed to set cookie - The cookie was set with an invalid Domain attribute.');
     });
 
-    it('yields an error when setting a cookie with an invalid URL', async () => {
+    it('rejects when setting a cookie with an invalid URL', async () => {
       const { cookies } = session.defaultSession;
       const name = '1';
       const value = '1';
 
       await expect(
         cookies.set({ url: 'asdf', name, value })
-      ).to.eventually.be.rejectedWith('Failed to set cookie with an invalid domain attribute');
+      ).to.eventually.be.rejectedWith('Failed to set cookie - The cookie was set with an invalid Domain attribute.');
+    });
+
+    it('rejects when setting a cookie with an invalid ASCII control character', async () => {
+      const { cookies } = session.defaultSession;
+      const name = 'BadCookie';
+      const value = 'test;test';
+
+      await expect(
+        cookies.set({ url, name, value })
+      ).to.eventually.be.rejectedWith('Failed to set cookie - The cookie contains ASCII control characters');
     });
 
     it('should overwrite previous cookies', async () => {
@@ -879,13 +892,21 @@ describe('session module', () => {
           }
         });
 
+        const today = Math.floor(Date.now() / 1000);
         const item = await downloadDone;
         expect(item.getState()).to.equal('completed');
         expect(item.getFilename()).to.equal('mock.pdf');
         expect(item.getMimeType()).to.equal('application/pdf');
         expect(item.getReceivedBytes()).to.equal(mockPDF.length);
         expect(item.getTotalBytes()).to.equal(mockPDF.length);
+        expect(item.getPercentComplete()).to.equal(100);
+        expect(item.getCurrentBytesPerSecond()).to.equal(0);
         expect(item.getContentDisposition()).to.equal(contentDisposition);
+
+        const start = item.getStartTime();
+        const end = item.getEndTime();
+        expect(start).to.be.greaterThan(today);
+        expect(end).to.be.greaterThan(start);
       });
 
       it('throws when called with invalid headers', () => {
@@ -1338,7 +1359,7 @@ describe('session module', () => {
       await w.loadURL('https://myfakesite');
 
       const [, name] = await result;
-      expect(name).to.deep.equal('SecurityError');
+      expect(name).to.deep.equal('NotAllowedError');
     });
 
     it('successfully resolves when calling legacy getUserMedia', async () => {

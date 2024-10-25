@@ -8,16 +8,21 @@
 #include <optional>
 
 #include "base/memory/raw_ptr.h"
-#include "gin/handle.h"
 #include "shell/common/color_util.h"
 #include "shell/common/gin_helper/event_emitter.h"
 #include "ui/views/view.h"
 #include "ui/views/view_observer.h"
 #include "v8/include/v8-value.h"
 
+namespace gin {
+template <typename T>
+class Handle;
+}  // namespace gin
+
 namespace electron::api {
 
-class View : public gin_helper::EventEmitter<View>, public views::ViewObserver {
+class View : public gin_helper::EventEmitter<View>,
+             private views::ViewObserver {
  public:
   static gin_helper::WrappableBase* New(gin::Arguments* args);
   static gin::Handle<View> Create(v8::Isolate* isolate);
@@ -36,6 +41,7 @@ class View : public gin_helper::EventEmitter<View>, public views::ViewObserver {
   void SetLayout(v8::Isolate* isolate, v8::Local<v8::Object> value);
   std::vector<v8::Local<v8::Value>> GetChildren();
   void SetBackgroundColor(std::optional<WrappedSkColor> color);
+  void SetBorderRadius(int radius);
   void SetVisible(bool visible);
 
   // views::ViewObserver
@@ -43,6 +49,7 @@ class View : public gin_helper::EventEmitter<View>, public views::ViewObserver {
   void OnViewIsDeleting(views::View* observed_view) override;
 
   views::View* view() const { return view_; }
+  std::optional<int> border_radius() const { return border_radius_; }
 
   // disable copy
   View(const View&) = delete;
@@ -57,7 +64,11 @@ class View : public gin_helper::EventEmitter<View>, public views::ViewObserver {
   void set_delete_view(bool should) { delete_view_ = should; }
 
  private:
+  void ApplyBorderRadius();
+  void ReorderChildView(gin::Handle<View> child, size_t index);
+
   std::vector<v8::Global<v8::Object>> child_views_;
+  std::optional<int> border_radius_;
 
   bool delete_view_ = true;
   raw_ptr<views::View> view_ = nullptr;

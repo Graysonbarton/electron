@@ -10,10 +10,10 @@ This patch makes three changes to Accelerator::GetShortcutText to improve shortc
 3. Ctrl-Shift-= and Ctrl-Plus show up as such
 
 diff --git a/ui/base/accelerators/accelerator.cc b/ui/base/accelerators/accelerator.cc
-index c33829d85745e595e3da8d9913f6e75b05e6c4a9..fa6fe3626b7c5f2b8e8ba9302780650952ecfa47 100644
+index dc4bea32e76b41521240ad14e313aa2492539e30..32a3fc0843656eaa87b85dd63ac1ade6d83b6e5b 100644
 --- a/ui/base/accelerators/accelerator.cc
 +++ b/ui/base/accelerators/accelerator.cc
-@@ -11,6 +11,7 @@
+@@ -12,6 +12,7 @@
  #include "base/i18n/rtl.h"
  #include "base/notreached.h"
  #include "base/strings/string_util.h"
@@ -21,7 +21,7 @@ index c33829d85745e595e3da8d9913f6e75b05e6c4a9..fa6fe3626b7c5f2b8e8ba93027806509
  #include "base/strings/utf_string_conversions.h"
  #include "build/build_config.h"
  #include "build/chromeos_buildflags.h"
-@@ -175,6 +176,11 @@ std::u16string Accelerator::GetShortcutText() const {
+@@ -184,6 +185,11 @@ std::u16string Accelerator::GetShortcutText() const {
  #endif
  
    if (shortcut.empty()) {
@@ -33,7 +33,7 @@ index c33829d85745e595e3da8d9913f6e75b05e6c4a9..fa6fe3626b7c5f2b8e8ba93027806509
  #if BUILDFLAG(IS_WIN)
      // Our fallback is to try translate the key code to a regular character
      // unless it is one of digits (VK_0 to VK_9). Some keyboard
-@@ -198,6 +204,10 @@ std::u16string Accelerator::GetShortcutText() const {
+@@ -207,6 +213,10 @@ std::u16string Accelerator::GetShortcutText() const {
        shortcut +=
            static_cast<std::u16string::value_type>(base::ToUpperASCII(c));
  #endif
@@ -44,7 +44,7 @@ index c33829d85745e595e3da8d9913f6e75b05e6c4a9..fa6fe3626b7c5f2b8e8ba93027806509
    }
  
  #if BUILDFLAG(IS_MAC)
-@@ -382,7 +392,7 @@ std::u16string Accelerator::ApplyLongFormModifiers(
+@@ -391,7 +401,7 @@ std::u16string Accelerator::ApplyLongFormModifiers(
      const std::u16string& shortcut) const {
    std::u16string result = shortcut;
  
@@ -53,7 +53,7 @@ index c33829d85745e595e3da8d9913f6e75b05e6c4a9..fa6fe3626b7c5f2b8e8ba93027806509
      result = ApplyModifierToAcceleratorString(result, IDS_APP_SHIFT_KEY);
  
    // Note that we use 'else-if' in order to avoid using Ctrl+Alt as a shortcut.
-@@ -390,7 +400,7 @@ std::u16string Accelerator::ApplyLongFormModifiers(
+@@ -399,7 +409,7 @@ std::u16string Accelerator::ApplyLongFormModifiers(
    // more information.
    if (IsCtrlDown())
      result = ApplyModifierToAcceleratorString(result, IDS_APP_CTRL_KEY);

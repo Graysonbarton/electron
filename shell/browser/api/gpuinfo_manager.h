@@ -11,12 +11,16 @@
 #include "content/browser/gpu/gpu_data_manager_impl.h"  // nogncheck
 #include "content/public/browser/gpu_data_manager.h"
 #include "content/public/browser/gpu_data_manager_observer.h"
-#include "shell/common/gin_helper/promise.h"
+
+namespace gin_helper {
+template <typename T>
+class Promise;
+}  // namespace gin_helper
 
 namespace electron {
 
 // GPUInfoManager is a singleton used to manage and fetch GPUInfo
-class GPUInfoManager : public content::GpuDataManagerObserver {
+class GPUInfoManager : private content::GpuDataManagerObserver {
  public:
   static GPUInfoManager* GetInstance();
 
@@ -29,9 +33,11 @@ class GPUInfoManager : public content::GpuDataManagerObserver {
 
   void FetchCompleteInfo(gin_helper::Promise<base::Value> promise);
   void FetchBasicInfo(gin_helper::Promise<base::Value> promise);
-  void OnGpuInfoUpdate() override;
 
  private:
+  // content::GpuDataManagerObserver
+  void OnGpuInfoUpdate() override;
+
   base::Value::Dict EnumerateGPUInfo(gpu::GPUInfo gpu_info) const;
 
   // These should be posted to the task queue

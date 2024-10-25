@@ -16,12 +16,11 @@
 #include "base/containers/fixed_flat_set.h"
 #include "base/environment.h"
 #include "base/feature_list.h"
-#include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "content/public/common/content_switches.h"
 #include "electron/fuses.h"
+#include "electron/mas.h"
 #include "gin/array_buffer.h"
 #include "gin/public/isolate_holder.h"
 #include "gin/v8_initializer.h"
@@ -104,10 +103,6 @@ void SetCrashKeyStub(const std::string& key, const std::string& value) {}
 void ClearCrashKeyStub(const std::string& key) {}
 #endif
 
-}  // namespace
-
-namespace electron {
-
 v8::Local<v8::Value> GetParameters(v8::Isolate* isolate) {
   std::map<std::string, std::string> keys;
 #if !IS_MAS_BUILD()
@@ -115,6 +110,10 @@ v8::Local<v8::Value> GetParameters(v8::Isolate* isolate) {
 #endif
   return gin::ConvertToV8(isolate, keys);
 }
+
+}  // namespace
+
+namespace electron {
 
 int NodeMain(int argc, char* argv[]) {
   bool initialized = base::CommandLine::Init(argc, argv);

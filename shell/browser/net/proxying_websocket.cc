@@ -12,7 +12,6 @@
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/extension_navigation_ui_data.h"
 #include "net/base/ip_endpoint.h"
-#include "net/http/http_util.h"
 #include "services/network/public/mojom/url_response_head.mojom.h"
 
 namespace electron {
@@ -114,10 +113,6 @@ void ProxyingWebSocket::ContinueToHeadersReceived() {
   DCHECK_EQ(net::OK, result);
   OnHeadersReceivedComplete(net::OK);
 }
-
-void ProxyingWebSocket::OnFailure(const std::string& message,
-                                  int32_t net_error,
-                                  int32_t response_code) {}
 
 void ProxyingWebSocket::OnConnectionEstablished(
     mojo::PendingRemote<network::mojom::WebSocket> websocket,
@@ -392,7 +387,6 @@ void ProxyingWebSocket::OnAuthRequiredComplete(AuthRequiredResponse rv) {
       break;
     case AuthRequiredResponse::kIoPending:
       NOTREACHED();
-      break;
   }
 }
 

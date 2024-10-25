@@ -4,16 +4,19 @@
 
 #include "shell/browser/hid/hid_chooser_controller.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "base/command_line.h"
 #include "base/containers/contains.h"
 #include "base/functional/bind.h"
 #include "base/ranges/algorithm.h"
+#include "content/public/browser/web_contents.h"
 #include "gin/data_object_builder.h"
 #include "services/device/public/cpp/hid/hid_blocklist.h"
 #include "services/device/public/cpp/hid/hid_switches.h"
 #include "shell/browser/api/electron_api_session.h"
+#include "shell/browser/hid/electron_hid_delegate.h"
 #include "shell/browser/hid/hid_chooser_context.h"
 #include "shell/browser/hid/hid_chooser_context_factory.h"
 #include "shell/browser/javascript_environment.h"
@@ -21,9 +24,9 @@
 #include "shell/common/gin_converters/content_converter.h"
 #include "shell/common/gin_converters/hid_device_info_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
-#include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/node_includes.h"
-#include "shell/common/process_util.h"
+#include "shell/common/node_util.h"
+#include "third_party/blink/public/mojom/devtools/console_message.mojom.h"
+#include "third_party/blink/public/mojom/hid/hid.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace {
@@ -47,11 +50,11 @@ bool FilterMatch(const blink::mojom::HidDeviceFilterPtr& filter,
   if (filter->usage) {
     if (filter->usage->is_page()) {
       const uint16_t usage_page = filter->usage->get_page();
-      auto find_it =
-          std::find_if(device.collections.begin(), device.collections.end(),
-                       [=](const device::mojom::HidCollectionInfoPtr& c) {
-                         return usage_page == c->usage->usage_page;
-                       });
+      auto find_it = std::ranges::find_if(
+          device.collections,
+          [=](const device::mojom::HidCollectionInfoPtr& c) {
+            return usage_page == c->usage->usage_page;
+          });
       if (find_it == device.collections.end())
         return false;
     } else if (filter->usage->is_usage_and_page()) {
@@ -202,10 +205,9 @@ void HidChooserController::OnDeviceChosen(gin::Arguments* args) {
       }
       RunCallback(std::move(devices));
     } else {
-      v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
-      node::Environment* env = node::Environment::GetCurrent(isolate);
-      EmitWarning(env, "The device id " + device_id + " was not found.",
-                  "UnknownHIDDeviceId");
+      util::EmitWarning(
+          base::StrCat({"The device id ", device_id, " was not found."}),
+          "UnknownHIDDeviceId");
       RunCallback({});
     }
   }
@@ -367,8 +369,8 @@ void HidChooserController::UpdateDeviceInfo(
   auto physical_device_it = device_map_.find(id);
   DCHECK(physical_device_it != device_map_.end());
   auto& device_infos = physical_device_it->second;
-  auto device_it = base::ranges::find(device_infos, device.guid,
-                                      &device::mojom::HidDeviceInfo::guid);
+  auto device_it = std::ranges::find(device_infos, device.guid,
+                                     &device::mojom::HidDeviceInfo::guid);
   DCHECK(device_it != device_infos.end());
   *device_it = device.Clone();
 }

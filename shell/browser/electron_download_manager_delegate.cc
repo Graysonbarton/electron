@@ -5,6 +5,7 @@
 #include "shell/browser/electron_download_manager_delegate.h"
 
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 
@@ -28,6 +29,8 @@
 #include "shell/browser/web_contents_preferences.h"
 #include "shell/common/gin_converters/callback_converter.h"
 #include "shell/common/gin_converters/file_path_converter.h"
+#include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/promise.h"
 #include "shell/common/options_switches.h"
 #include "shell/common/thread_restrictions.h"
 
@@ -166,7 +169,7 @@ file_dialog::Filters FormatFilterForExtensions(
       // Having '*' in the description could cause the windows file dialog to
       // not include the file extension in the file dialog. So strip out any '*'
       // characters if `keep_extension_visible` is set.
-      base::ReplaceChars(desc, "*", base::StringPiece(), &desc);
+      base::ReplaceChars(desc, "*", std::string_view(), &desc);
     }
 
     // Remove the preceding '.' character from the extension.

@@ -1,3 +1,5 @@
+const minimist = require('minimist');
+
 const cp = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -13,9 +15,17 @@ if (!require.main) {
   throw new Error('Must call the nan spec runner directly');
 }
 
-const args = require('minimist')(process.argv.slice(2), {
+const args = minimist(process.argv.slice(2), {
   string: ['only']
 });
+
+const getNodeGypVersion = () => {
+  const nanPackageJSONPath = path.join(NAN_DIR, 'package.json');
+  const nanPackageJSON = JSON.parse(fs.readFileSync(nanPackageJSONPath, 'utf8'));
+  const { devDependencies } = nanPackageJSON;
+  const nodeGypVersion = devDependencies['node-gyp'];
+  return nodeGypVersion || 'latest';
+};
 
 async function main () {
   const outDir = utils.getOutDir({ shouldLog: true });
@@ -23,7 +33,7 @@ async function main () {
   const env = {
     ...process.env,
     npm_config_nodedir: nodeDir,
-    npm_config_msvs_version: '2019',
+    npm_config_msvs_version: '2022',
     npm_config_arch: process.env.NPM_CONFIG_ARCH,
     npm_config_yes: 'true'
   };
@@ -90,16 +100,17 @@ async function main () {
     env.LDFLAGS = ldflags;
   }
 
-  const { status: buildStatus } = cp.spawnSync(NPX_CMD, ['node-gyp', 'rebuild', '--verbose', '--directory', 'test', '-j', 'max'], {
+  const nodeGypVersion = getNodeGypVersion();
+  const { status: buildStatus, signal } = cp.spawnSync(NPX_CMD, [`node-gyp@${nodeGypVersion}`, 'rebuild', '--verbose', '--directory', 'test', '-j', 'max'], {
     env,
     cwd: NAN_DIR,
     stdio: 'inherit',
     shell: process.platform === 'win32'
   });
 
-  if (buildStatus !== 0) {
+  if (buildStatus !== 0 || signal != null) {
     console.error('Failed to build nan test modules');
-    return process.exit(buildStatus);
+    return process.exit(buildStatus !== 0 ? buildStatus : signal);
   }
 
   const { status: installStatus } = cp.spawnSync(NPX_CMD, [`yarn@${YARN_VERSION}`, 'install'], {
@@ -108,16 +119,19 @@ async function main () {
     stdio: 'inherit',
     shell: process.platform === 'win32'
   });
-  if (installStatus !== 0) {
+
+  if (installStatus !== 0 || signal != null) {
     console.error('Failed to install nan node_modules');
-    return process.exit(installStatus);
+    return process.exit(installStatus !== 0 ? installStatus : signal);
   }
 
   const onlyTests = args.only && args.only.split(',');
 
   const DISABLED_TESTS = new Set([
     'nannew-test.js',
-    'buffer-test.js'
+    'buffer-test.js',
+    // we can't patch this test because it uses CRLF line endings
+    'methodswithdata-test.js'
   ]);
   const testsToRun = fs.readdirSync(path.resolve(NAN_DIR, 'test', 'js'))
     .filter(test => !DISABLED_TESTS.has(test))

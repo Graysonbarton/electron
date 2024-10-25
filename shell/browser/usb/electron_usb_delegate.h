@@ -14,8 +14,6 @@
 #include "base/memory/weak_ptr.h"
 #include "content/public/browser/usb_chooser.h"
 #include "content/public/browser/usb_delegate.h"
-#include "mojo/public/cpp/bindings/pending_receiver.h"
-#include "mojo/public/cpp/bindings/pending_remote.h"
 #include "services/device/public/mojom/usb_device.mojom-forward.h"
 #include "services/device/public/mojom/usb_enumeration_options.mojom-forward.h"
 #include "services/device/public/mojom/usb_manager.mojom-forward.h"
@@ -26,6 +24,13 @@ namespace content {
 class BrowserContext;
 class RenderFrameHost;
 }  // namespace content
+
+namespace mojo {
+template <typename T>
+class PendingReceiver;
+template <typename T>
+class PendingRemote;
+}  // namespace mojo
 
 namespace electron {
 
@@ -56,10 +61,11 @@ class ElectronUsbDelegate : public content::UsbDelegate {
   const device::mojom::UsbDeviceInfo* GetDeviceInfo(
       content::BrowserContext* browser_context,
       const std::string& guid) override;
-  bool HasDevicePermission(content::BrowserContext* browser_context,
-                           content::RenderFrameHost* frame,
-                           const url::Origin& origin,
-                           const device::mojom::UsbDeviceInfo& device) override;
+  bool HasDevicePermission(
+      content::BrowserContext* browser_context,
+      content::RenderFrameHost* frame,
+      const url::Origin& origin,
+      const device::mojom::UsbDeviceInfo& device_info) override;
   void GetDevices(
       content::BrowserContext* browser_context,
       blink::mojom::WebUsbService::GetDevicesCallback callback) override;

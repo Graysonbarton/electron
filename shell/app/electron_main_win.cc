@@ -17,13 +17,12 @@
 #include <vector>
 
 #include "base/at_exit.h"
-#include "base/environment.h"
+#include "base/debug/alias.h"
 #include "base/i18n/icu_util.h"
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/process/launch.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/dark_mode_support.h"
-#include "base/win/windows_version.h"
 #include "chrome/app/exit_code_watcher_win.h"
 #include "components/crash/core/app/crash_switches.h"
 #include "components/crash/core/app/run_as_crashpad_handler_win.h"
@@ -166,7 +165,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, wchar_t* cmd, int) {
     base::AtExitManager atexit_manager;
     base::i18n::InitializeICU();
     auto ret = electron::NodeMain(argv.size(), argv.data());
-    std::for_each(argv.begin(), argv.end(), free);
+    std::ranges::for_each(argv, free);
     return ret;
   }
 
@@ -225,7 +224,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, wchar_t* cmd, int) {
   CHECK_EQ(fiber_status, FiberStatus::kSuccess);
 #endif  // defined(ARCH_CPU_32_BITS)
 
-  if (!electron::CheckCommandLineArguments(arguments.argc, arguments.argv))
+  if (!electron::CheckCommandLineArguments(command_line->argv()))
     return -1;
 
   sandbox::SandboxInterfaceInfo sandbox_info = {nullptr};

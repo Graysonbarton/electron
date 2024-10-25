@@ -86,9 +86,6 @@ const char kType[] = "type";
 // Disable auto-hiding cursor.
 const char kDisableAutoHideCursor[] = "disableAutoHideCursor";
 
-// Use the macOS' standard window instead of the textured window.
-const char kStandardWindow[] = "standardWindow";
-
 // Default browser window background color.
 const char kBackgroundColor[] = "backgroundColor";
 
@@ -156,6 +153,8 @@ const char kAllowRunningInsecureContent[] = "allowRunningInsecureContent";
 
 const char kOffscreen[] = "offscreen";
 
+const char kUseSharedTexture[] = "useSharedTexture";
+
 const char kNodeIntegrationInSubFrames[] = "nodeIntegrationInSubFrames";
 
 // Disable window resizing when HTML Fullscreen API is activated.
@@ -184,8 +183,6 @@ const char kHiddenPage[] = "hiddenPage";
 const char kSpellcheck[] = "spellcheck";
 #endif
 
-const char kEnableWebSQL[] = "enableWebSQL";
-
 const char kEnablePreferredSizeMode[] = "enablePreferredSizeMode";
 
 const char ktitleBarOverlay[] = "titleBarOverlay";
@@ -196,12 +193,6 @@ namespace switches {
 
 // Enable chromium sandbox.
 const char kEnableSandbox[] = "enable-sandbox";
-
-// Ppapi Flash path.
-const char kPpapiFlashPath[] = "ppapi-flash-path";
-
-// Ppapi Flash version.
-const char kPpapiFlashVersion[] = "ppapi-flash-version";
 
 // Disable HTTP cache.
 const char kDisableHttpCache[] = "disable-http-cache";
@@ -266,8 +257,6 @@ const char kEnableAuthNegotiatePort[] = "enable-auth-negotiate-port";
 
 // If set, NTLM v2 is disabled for POSIX platforms.
 const char kDisableNTLMv2[] = "disable-ntlm-v2";
-
-const char kEnableWebSQL[] = "enable-websql";
 
 }  // namespace switches
 

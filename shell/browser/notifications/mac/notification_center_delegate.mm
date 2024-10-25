@@ -7,8 +7,14 @@
 #include <string>
 
 #include "base/logging.h"
+#include "electron/mas.h"
 #include "shell/browser/notifications/mac/cocoa_notification.h"
 #include "shell/browser/notifications/mac/notification_presenter_mac.h"
+
+// NSUserNotification is deprecated; we need to use the
+// UserNotifications.frameworks API instead
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 @implementation NotificationCenterDelegate
 

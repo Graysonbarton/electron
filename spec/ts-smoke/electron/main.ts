@@ -1,3 +1,5 @@
+/* eslint-disable */
+
 import {
   app,
   autoUpdater,
@@ -717,7 +719,7 @@ const template = <Electron.MenuItemConstructorOptions[]> [
         label: 'Reload',
         accelerator: 'Command+R',
         click: (item, focusedWindow) => {
-          if (focusedWindow) {
+          if (focusedWindow instanceof BrowserWindow) {
             focusedWindow.webContents.reloadIgnoringCache();
           }
         }
@@ -726,7 +728,7 @@ const template = <Electron.MenuItemConstructorOptions[]> [
         label: 'Toggle DevTools',
         accelerator: 'Alt+Command+I',
         click: (item, focusedWindow) => {
-          if (focusedWindow) {
+          if (focusedWindow instanceof BrowserWindow) {
             focusedWindow.webContents.toggleDevTools();
           }
         }
@@ -738,7 +740,7 @@ const template = <Electron.MenuItemConstructorOptions[]> [
         label: 'Actual Size',
         accelerator: 'CmdOrCtrl+0',
         click: (item, focusedWindow) => {
-          if (focusedWindow) {
+          if (focusedWindow instanceof BrowserWindow) {
             focusedWindow.webContents.zoomLevel = 0;
           }
         }
@@ -747,7 +749,7 @@ const template = <Electron.MenuItemConstructorOptions[]> [
         label: 'Zoom In',
         accelerator: 'CmdOrCtrl+Plus',
         click: (item, focusedWindow) => {
-          if (focusedWindow) {
+          if (focusedWindow instanceof BrowserWindow) {
             const { webContents } = focusedWindow;
             webContents.zoomLevel += 0.5;
           }
@@ -757,7 +759,7 @@ const template = <Electron.MenuItemConstructorOptions[]> [
         label: 'Zoom Out',
         accelerator: 'CmdOrCtrl+-',
         click: (item, focusedWindow) => {
-          if (focusedWindow) {
+          if (focusedWindow instanceof BrowserWindow) {
             const { webContents } = focusedWindow;
             webContents.zoomLevel -= 0.5;
           }
@@ -1175,7 +1177,7 @@ shell.writeShortcutLink('/home/user/Desktop/shortcut.lnk', 'update', shell.readS
 
 session.defaultSession.clearStorageData({ storages: ['cookies', 'filesystem'] });
 session.defaultSession.clearStorageData({ storages: ['localstorage', 'indexdb', 'serviceworkers'] });
-session.defaultSession.clearStorageData({ storages: ['shadercache', 'websql', 'cachestorage'] });
+session.defaultSession.clearStorageData({ storages: ['shadercache', 'cachestorage'] });
 // @ts-expect-error Invalid type value
 session.defaultSession.clearStorageData({ storages: ['wrong_path'] });
 

@@ -1,8 +1,11 @@
-import { expect } from 'chai';
 import { BrowserWindow, session, desktopCapturer } from 'electron/main';
-import { closeAllWindows } from './lib/window-helpers';
+
+import { expect } from 'chai';
+
 import * as http from 'node:http';
+
 import { ifit, listen } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
 
 describe('setDisplayMediaRequestHandler', () => {
   afterEach(closeAllWindows);
@@ -21,10 +24,6 @@ describe('setDisplayMediaRequestHandler', () => {
     server.close();
   });
 
-  // FIXME(nornagon): this test fails on our macOS CircleCI runners with the
-  // error message:
-  // [ERROR:video_capture_device_client.cc(659)] error@ OnStart@content/browser/media/capture/desktop_capture_device_mac.cc:98, CGDisplayStreamCreate failed, OS message: Value too large to be stored in data type (84)
-  // This is possibly related to the OS/VM setup that CircleCI uses for macOS.
   ifit(process.platform !== 'darwin')('works when calling getDisplayMedia', async function () {
     if ((await desktopCapturer.getSources({ types: ['screen'] })).length === 0) {
       return this.skip();

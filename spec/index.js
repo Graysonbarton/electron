@@ -1,3 +1,5 @@
+const { app, protocol } = require('electron');
+
 const fs = require('node:fs');
 const path = require('node:path');
 const v8 = require('node:v8');
@@ -11,8 +13,6 @@ process.on('uncaughtException', (err) => {
 // Tell ts-node which tsconfig to use
 process.env.TS_NODE_PROJECT = path.resolve(__dirname, '../tsconfig.spec.json');
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
-
-const { app, protocol } = require('electron');
 
 // Some Linux machines have broken hardware acceleration support.
 if (process.env.ELECTRON_TEST_DISABLE_HARDWARE_ACCELERATION) {
@@ -40,6 +40,7 @@ protocol.registerSchemesAsPrivileged([
   { scheme: global.standardScheme, privileges: { standard: true, secure: true, stream: false } },
   { scheme: global.zoomScheme, privileges: { standard: true, secure: true } },
   { scheme: global.serviceWorkerScheme, privileges: { allowServiceWorkers: true, standard: true, secure: true } },
+  { scheme: 'http-like', privileges: { standard: true, secure: true, corsEnabled: true, supportFetchAPI: true } },
   { scheme: 'cors-blob', privileges: { corsEnabled: true, supportFetchAPI: true } },
   { scheme: 'cors', privileges: { corsEnabled: true, supportFetchAPI: true } },
   { scheme: 'no-cors', privileges: { supportFetchAPI: true } },
@@ -147,8 +148,18 @@ app.whenReady().then(async () => {
   };
 
   const { getFiles } = require('./get-files');
-  const testFiles = await getFiles(__dirname, { filter });
-  for (const file of testFiles.sort()) {
+  const testFiles = await getFiles(__dirname, filter);
+  const VISIBILITY_SPEC = ('visibility-state-spec.ts');
+  const sortedFiles = testFiles.sort((a, b) => {
+    // If visibility-state-spec is in the list, move it to the first position
+    // so that it gets executed first to avoid other specs interferring with it.
+    if (a.indexOf(VISIBILITY_SPEC) > -1) {
+      return -1;
+    } else {
+      return a.localeCompare(b);
+    }
+  });
+  for (const file of sortedFiles) {
     mocha.addFile(file);
   }
 

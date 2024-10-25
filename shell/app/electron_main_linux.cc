@@ -6,11 +6,9 @@
 #include <utility>
 
 #include "base/at_exit.h"
-#include "base/base_switches.h"
 #include "base/command_line.h"
 #include "base/i18n/icu_util.h"
 #include "content/public/app/content_main.h"
-#include "electron/buildflags/buildflags.h"
 #include "electron/fuses.h"
 #include "shell/app/electron_main_delegate.h"  // NOLINT
 #include "shell/app/node_main.h"

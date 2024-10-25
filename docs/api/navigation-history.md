@@ -9,6 +9,24 @@ Each navigation entry corresponds to a specific page. The indexing system follow
 
 ### Instance Methods
 
+#### `navigationHistory.canGoBack()`
+
+Returns `boolean` - Whether the browser can go back to previous web page.
+
+#### `navigationHistory.canGoForward()`
+
+Returns `boolean` - Whether the browser can go forward to next web page.
+
+#### `navigationHistory.canGoToOffset(offset)`
+
+* `offset` Integer
+
+Returns `boolean` - Whether the web page can go to the specified `offset` from the current entry.
+
+#### `navigationHistory.clear()`
+
+Clears the navigation history.
+
 #### `navigationHistory.getActiveIndex()`
 
 Returns `Integer` - The index of the current page, from which we would go back/forward or reload.
@@ -17,13 +35,42 @@ Returns `Integer` - The index of the current page, from which we would go back/f
 
 * `index` Integer
 
-Returns `Object`:
-
-* `url` string - The URL of the navigation entry at the given index.
-* `title` string - The page title of the navigation entry at the given index.
+Returns [`NavigationEntry`](structures/navigation-entry.md) - Navigation entry at the given index.
 
 If index is out of bounds (greater than history length or less than 0), null will be returned.
+
+#### `navigationHistory.goBack()`
+
+Makes the browser go back a web page.
+
+#### `navigationHistory.goForward()`
+
+Makes the browser go forward a web page.
+
+#### `navigationHistory.goToIndex(index)`
+
+* `index` Integer
+
+Navigates browser to the specified absolute web page index.
+
+#### `navigationHistory.goToOffset(offset)`
+
+* `offset` Integer
+
+Navigates to the specified offset from the current entry.
 
 #### `navigationHistory.length()`
 
 Returns `Integer` - History length.
+
+#### `navigationHistory.removeEntryAtIndex(index)`
+
+* `index` Integer
+
+Removes the navigation entry at the given index. Can't remove entry at the "current active index".
+
+Returns `boolean` - Whether the navigation entry was removed from the webContents history.
+
+#### `navigationHistory.getAllEntries()`
+
+Returns [`NavigationEntry[]`](structures/navigation-entry.md) - WebContents complete history.
