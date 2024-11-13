@@ -10,8 +10,6 @@
 #include <utility>
 
 #include "base/files/file_path.h"
-#include "base/files/file_util.h"
-#include "base/functional/bind.h"
 #include "base/json/json_string_value_serializer.h"
 #include "base/path_service.h"
 #include "base/values.h"
@@ -21,9 +19,6 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/notification_details.h"
-#include "content/public/browser/notification_service.h"
-#include "content/public/browser/notification_source.h"
 #include "electron/buildflags/buildflags.h"
 #include "extensions/browser/api/app_runtime/app_runtime_api.h"
 #include "extensions/browser/extension_registry.h"
@@ -33,7 +28,6 @@
 #include "extensions/browser/service_worker_manager.h"
 #include "extensions/browser/user_script_manager.h"
 #include "extensions/common/constants.h"
-#include "extensions/common/file_util.h"
 #include "shell/browser/extensions/electron_extension_loader.h"
 
 #if BUILDFLAG(ENABLE_PDF_VIEWER)
@@ -103,7 +97,7 @@ std::unique_ptr<base::Value::Dict> ParseManifest(
     LOG(ERROR) << "Failed to parse extension manifest.";
     return std::unique_ptr<base::Value::Dict>();
   }
-  return std::make_unique<base::Value::Dict>(std::move(manifest->GetDict()));
+  return std::make_unique<base::Value::Dict>(std::move(*manifest).TakeDict());
 }
 
 void ElectronExtensionSystem::LoadComponentExtensions() {
@@ -190,14 +184,12 @@ void ElectronExtensionSystem::InstallUpdate(
     bool install_immediately,
     InstallUpdateCallback install_update_callback) {
   NOTREACHED();
-  base::DeletePathRecursively(temp_dir);
 }
 
 bool ElectronExtensionSystem::FinishDelayedInstallationIfReady(
     const std::string& extension_id,
     bool install_immediately) {
   NOTREACHED();
-  return false;
 }
 
 void ElectronExtensionSystem::PerformActionBasedOnOmahaAttributes(

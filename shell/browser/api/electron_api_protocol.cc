@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "base/command_line.h"
-#include "base/stl_util.h"
 #include "content/common/url_schemes.h"
 #include "content/public/browser/child_process_security_policy.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "shell/browser/browser.h"
 #include "shell/browser/electron_browser_context.h"
@@ -21,8 +21,8 @@
 #include "shell/common/gin_helper/object_template_builder.h"
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/node_includes.h"
+#include "shell/common/node_util.h"
 #include "shell/common/options_switches.h"
-#include "shell/common/process_util.h"
 #include "url/url_util.h"
 
 namespace {
@@ -162,7 +162,7 @@ void RegisterSchemesAsPrivileged(gin_helper::ErrorThrower thrower,
     }
   }
 
-  const auto AppendSchemesToCmdLine = [](const char* switch_name,
+  const auto AppendSchemesToCmdLine = [](const std::string_view switch_name,
                                          std::vector<std::string> schemes) {
     if (schemes.empty())
       return;
@@ -232,7 +232,7 @@ bool Protocol::UnregisterProtocol(const std::string& scheme,
 }
 
 bool Protocol::IsProtocolRegistered(const std::string& scheme) {
-  return protocol_registry_->IsProtocolRegistered(scheme);
+  return protocol_registry_->FindRegistered(scheme) != nullptr;
 }
 
 ProtocolError Protocol::InterceptProtocol(ProtocolType type,
@@ -251,17 +251,16 @@ bool Protocol::UninterceptProtocol(const std::string& scheme,
 }
 
 bool Protocol::IsProtocolIntercepted(const std::string& scheme) {
-  return protocol_registry_->IsProtocolIntercepted(scheme);
+  return protocol_registry_->FindIntercepted(scheme) != nullptr;
 }
 
 v8::Local<v8::Promise> Protocol::IsProtocolHandled(const std::string& scheme,
                                                    gin::Arguments* args) {
-  node::Environment* env = node::Environment::GetCurrent(args->isolate());
-  EmitWarning(env,
-              "The protocol.isProtocolHandled API is deprecated, use "
-              "protocol.isProtocolRegistered or protocol.isProtocolIntercepted "
-              "instead.",
-              "ProtocolDeprecateIsProtocolHandled");
+  util::EmitWarning(args->isolate(),
+                    "The protocol.isProtocolHandled API is deprecated, "
+                    "use protocol.isProtocolRegistered "
+                    "or protocol.isProtocolIntercepted instead.",
+                    "ProtocolDeprecateIsProtocolHandled");
   return gin_helper::Promise<bool>::ResolvedPromise(
       args->isolate(),
       IsProtocolRegistered(scheme) || IsProtocolIntercepted(scheme) ||
@@ -279,9 +278,8 @@ void Protocol::HandleOptionalCallback(gin::Arguments* args,
                                       ProtocolError error) {
   base::RepeatingCallback<void(v8::Local<v8::Value>)> callback;
   if (args->GetNext(&callback)) {
-    node::Environment* env = node::Environment::GetCurrent(args->isolate());
-    EmitWarning(
-        env,
+    util::EmitWarning(
+        args->isolate(),
         "The callback argument of protocol module APIs is no longer needed.",
         "ProtocolDeprecateCallback");
     if (error == ProtocolError::kOK)

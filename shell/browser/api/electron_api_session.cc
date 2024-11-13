@@ -16,12 +16,11 @@
 #include "base/files/file_enumerator.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
-#include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "base/uuid.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/predictors/preconnect_manager.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "components/download/public/common/download_danger_type.h"
@@ -42,11 +41,13 @@
 #include "content/public/browser/storage_partition.h"
 #include "gin/arguments.h"
 #include "gin/converter.h"
+#include "gin/handle.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/self_owned_receiver.h"
 #include "net/base/completion_repeating_callback.h"
 #include "net/base/load_flags.h"
 #include "net/base/network_anonymization_key.h"
+#include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "net/http/http_auth_handler_factory.h"
 #include "net/http/http_auth_preferences.h"
 #include "net/http/http_cache.h"
@@ -81,11 +82,13 @@
 #include "shell/common/gin_converters/usb_protected_classes_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/object_template_builder.h"
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/node_includes.h"
+#include "shell/common/node_util.h"
 #include "shell/common/options_switches.h"
-#include "shell/common/process_util.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -130,7 +133,6 @@ uint32_t GetStorageMask(const std::vector<std::string>& storage_types) {
            {"indexdb", StoragePartition::REMOVE_DATA_MASK_INDEXEDDB},
            {"localstorage", StoragePartition::REMOVE_DATA_MASK_LOCAL_STORAGE},
            {"shadercache", StoragePartition::REMOVE_DATA_MASK_SHADER_CACHE},
-           {"websql", StoragePartition::REMOVE_DATA_MASK_WEBSQL},
            {"serviceworkers",
             StoragePartition::REMOVE_DATA_MASK_SERVICE_WORKERS},
            {"cachestorage", StoragePartition::REMOVE_DATA_MASK_CACHE_STORAGE}});
@@ -172,7 +174,6 @@ constexpr auto kDataTypeLookup =
         {"indexedDB", BrowsingDataRemover::DATA_TYPE_INDEXED_DB},
         {"localStorage", BrowsingDataRemover::DATA_TYPE_LOCAL_STORAGE},
         {"serviceWorkers", BrowsingDataRemover::DATA_TYPE_SERVICE_WORKERS},
-        {"webSQL", BrowsingDataRemover::DATA_TYPE_WEB_SQL},
     });
 
 BrowsingDataRemover::DataType GetDataTypeMask(
@@ -260,11 +261,11 @@ class ClearDataTask {
   }
 
  private:
-  // An individiual |content::BrowsingDataRemover::Remove...| operation as part
+  // An individual |content::BrowsingDataRemover::Remove...| operation as part
   // of a full |ClearDataTask|. This class manages its own lifetime, cleaning
   // itself up after the operation completes and notifies the task of the
   // result.
-  class ClearDataOperation : public BrowsingDataRemover::Observer {
+  class ClearDataOperation : private BrowsingDataRemover::Observer {
    public:
     static void Run(std::shared_ptr<ClearDataTask> task,
                     BrowsingDataRemover* remover,
@@ -454,8 +455,7 @@ struct Converter<network::mojom::SSLConfigPtr> {
         !options.Get("disabledCipherSuites", &(*out)->disabled_cipher_suites)) {
       return false;
     }
-    std::sort((*out)->disabled_cipher_suites.begin(),
-              (*out)->disabled_cipher_suites.end());
+    std::ranges::sort((*out)->disabled_cipher_suites);
 
     // TODO(nornagon): also support other SSLConfig properties?
     return true;
@@ -532,9 +532,10 @@ class DictionaryObserver final : public SpellcheckCustomDictionary::Observer {
 #endif  // BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
 
 struct UserDataLink : base::SupportsUserData::Data {
-  explicit UserDataLink(Session* ses) : session(ses) {}
+  explicit UserDataLink(base::WeakPtr<Session> session_in)
+      : session{std::move(session_in)} {}
 
-  raw_ptr<Session> session;
+  base::WeakPtr<Session> session;
 };
 
 const void* kElectronApiSessionKey = &kElectronApiSessionKey;
@@ -546,7 +547,8 @@ gin::WrapperInfo Session::kWrapperInfo = {gin::kEmbedderNativeGin};
 Session::Session(v8::Isolate* isolate, ElectronBrowserContext* browser_context)
     : isolate_(isolate),
       network_emulation_token_(base::UnguessableToken::Create()),
-      browser_context_(browser_context) {
+      browser_context_{
+          raw_ref<ElectronBrowserContext>::from_ptr(browser_context)} {
   // Observe DownloadManager to get download notifications.
   browser_context->GetDownloadManager()->AddObserver(this);
 
@@ -554,13 +556,13 @@ Session::Session(v8::Isolate* isolate, ElectronBrowserContext* browser_context)
 
   protocol_.Reset(isolate, Protocol::Create(isolate, browser_context).ToV8());
 
-  browser_context->SetUserData(kElectronApiSessionKey,
-                               std::make_unique<UserDataLink>(this));
+  browser_context->SetUserData(
+      kElectronApiSessionKey,
+      std::make_unique<UserDataLink>(weak_factory_.GetWeakPtr()));
 
 #if BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
-  SpellcheckService* service =
-      SpellcheckServiceFactory::GetForContext(browser_context_);
-  if (service) {
+  if (auto* service =
+          SpellcheckServiceFactory::GetForContext(browser_context)) {
     service->SetHunspellObserver(this);
   }
 #endif
@@ -574,9 +576,8 @@ Session::~Session() {
   browser_context()->GetDownloadManager()->RemoveObserver(this);
 
 #if BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER)
-  SpellcheckService* service =
-      SpellcheckServiceFactory::GetForContext(browser_context_);
-  if (service) {
+  if (auto* service =
+          SpellcheckServiceFactory::GetForContext(browser_context())) {
     service->SetHunspellObserver(nullptr);
   }
 #endif
@@ -641,7 +642,7 @@ v8::Local<v8::Promise> Session::ResolveHost(
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   auto fn = base::MakeRefCounted<ResolveHostFunction>(
-      browser_context_, std::move(host),
+      browser_context(), std::move(host),
       params ? std::move(params.value()) : nullptr,
       base::BindOnce(
           [](gin_helper::Promise<gin_helper::Dictionary> promise,
@@ -1110,11 +1111,9 @@ v8::Local<v8::Promise> Session::LoadExtension(
              const extensions::Extension* extension,
              const std::string& error_msg) {
             if (extension) {
-              if (!error_msg.empty()) {
-                node::Environment* env =
-                    node::Environment::GetCurrent(promise.isolate());
-                EmitWarning(env, error_msg, "ExtensionLoadWarning");
-              }
+              if (!error_msg.empty())
+                util::EmitWarning(promise.isolate(), error_msg,
+                                  "ExtensionLoadWarning");
               promise.Resolve(extension);
             } else {
               promise.RejectWithErrorMessage(error_msg);
@@ -1235,8 +1234,8 @@ void Session::Preconnect(const gin_helper::Dictionary& options,
     if (num_sockets_to_preconnect < kMinSocketsToPreconnect ||
         num_sockets_to_preconnect > kMaxSocketsToPreconnect) {
       args->ThrowTypeError(
-          base::StringPrintf("numSocketsToPreconnect is outside range [%d,%d]",
-                             kMinSocketsToPreconnect, kMaxSocketsToPreconnect));
+          absl::StrFormat("numSocketsToPreconnect is outside range [%d,%d]",
+                          kMinSocketsToPreconnect, kMaxSocketsToPreconnect));
       return;
     }
   }
@@ -1244,7 +1243,7 @@ void Session::Preconnect(const gin_helper::Dictionary& options,
   DCHECK_GT(num_sockets_to_preconnect, 0);
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE,
-      base::BindOnce(&StartPreconnectOnUI, base::Unretained(browser_context_),
+      base::BindOnce(&StartPreconnectOnUI, base::Unretained(browser_context()),
                      url, num_sockets_to_preconnect));
 }
 
@@ -1358,8 +1357,8 @@ v8::Local<v8::Value> Session::ClearData(gin_helper::ErrorThrower thrower,
         // Opaque origins cannot be used with this API
         if (origin.opaque()) {
           thrower.ThrowError(
-              base::StringPrintf("Invalid origin: '%s'",
-                                 origin_url.possibly_invalid_spec().c_str()));
+              absl::StrFormat("Invalid origin: '%s'",
+                              origin_url.possibly_invalid_spec().c_str()));
           return v8::Undefined(isolate);
         }
 
@@ -1436,7 +1435,7 @@ v8::Local<v8::Promise> Session::ListWordsInSpellCheckerDictionary() {
   v8::Local<v8::Promise> handle = promise.GetHandle();
 
   SpellcheckService* spellcheck =
-      SpellcheckServiceFactory::GetForContext(browser_context_);
+      SpellcheckServiceFactory::GetForContext(browser_context());
 
   if (!spellcheck) {
     promise.RejectWithErrorMessage(
@@ -1464,7 +1463,7 @@ bool Session::AddWordToSpellCheckerDictionary(const std::string& word) {
     return false;
 
   SpellcheckService* service =
-      SpellcheckServiceFactory::GetForContext(browser_context_);
+      SpellcheckServiceFactory::GetForContext(browser_context());
   if (!service)
     return false;
 
@@ -1485,7 +1484,7 @@ bool Session::RemoveWordFromSpellCheckerDictionary(const std::string& word) {
     return false;
 
   SpellcheckService* service =
-      SpellcheckServiceFactory::GetForContext(browser_context_);
+      SpellcheckServiceFactory::GetForContext(browser_context());
   if (!service)
     return false;
 
@@ -1514,7 +1513,7 @@ bool Session::IsSpellCheckerEnabled() const {
 Session* Session::FromBrowserContext(content::BrowserContext* context) {
   auto* data =
       static_cast<UserDataLink*>(context->GetUserData(kElectronApiSessionKey));
-  return data ? data->session : nullptr;
+  return data ? data->session.get() : nullptr;
 }
 
 // static
@@ -1545,8 +1544,7 @@ gin::Handle<Session> Session::FromPartition(v8::Isolate* isolate,
   if (partition.empty()) {
     browser_context =
         ElectronBrowserContext::From("", false, std::move(options));
-  } else if (base::StartsWith(partition, kPersistPrefix,
-                              base::CompareCase::SENSITIVE)) {
+  } else if (partition.starts_with(kPersistPrefix)) {
     std::string name = partition.substr(8);
     browser_context =
         ElectronBrowserContext::From(name, false, std::move(options));
@@ -1607,7 +1605,7 @@ void Session::FillObjectTemplate(v8::Isolate* isolate,
                  &Session::SetPermissionRequestHandler)
       .SetMethod("setPermissionCheckHandler",
                  &Session::SetPermissionCheckHandler)
-      .SetMethod("setDisplayMediaRequestHandler",
+      .SetMethod("_setDisplayMediaRequestHandler",
                  &Session::SetDisplayMediaRequestHandler)
       .SetMethod("setDevicePermissionHandler",
                  &Session::SetDevicePermissionHandler)

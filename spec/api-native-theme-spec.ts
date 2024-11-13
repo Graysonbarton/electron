@@ -1,5 +1,7 @@
-import { expect } from 'chai';
 import { nativeTheme, BrowserWindow, ipcMain } from 'electron/main';
+
+import { expect } from 'chai';
+
 import { once } from 'node:events';
 import * as path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
@@ -103,6 +105,12 @@ describe('nativeTheme module', () => {
   describe('nativeTheme.inForcedColorsMode', () => {
     it('returns a boolean', () => {
       expect(nativeTheme.inForcedColorsMode).to.be.a('boolean');
+    });
+  });
+
+  describe('nativeTheme.prefersReducesTransparency', () => {
+    it('returns a boolean', () => {
+      expect(nativeTheme.prefersReducedTransparency).to.be.a('boolean');
     });
   });
 });

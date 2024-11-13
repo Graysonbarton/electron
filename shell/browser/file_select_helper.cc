@@ -13,14 +13,12 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
-#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/hang_watcher.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/platform_util.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/prefs/pref_service.h"
@@ -78,8 +76,7 @@ FileSelectHelper::~FileSelectHelper() {
 }
 
 void FileSelectHelper::FileSelected(const ui::SelectedFileInfo& file,
-                                    int index,
-                                    void* params) {
+                                    int index) {
   if (!render_frame_host_) {
     RunFileChooserEnd();
     return;
@@ -94,12 +91,11 @@ void FileSelectHelper::FileSelected(const ui::SelectedFileInfo& file,
   std::vector<ui::SelectedFileInfo> files;
   files.push_back(file);
 
-  MultiFilesSelected(files, params);
+  MultiFilesSelected(files);
 }
 
 void FileSelectHelper::MultiFilesSelected(
-    const std::vector<ui::SelectedFileInfo>& files,
-    void* params) {
+    const std::vector<ui::SelectedFileInfo>& files) {
 #if BUILDFLAG(IS_MAC)
   base::ThreadPool::PostTask(
       FROM_HERE,
@@ -110,7 +106,7 @@ void FileSelectHelper::MultiFilesSelected(
 #endif  // BUILDFLAG(IS_MAC)
 }
 
-void FileSelectHelper::FileSelectionCanceled(void* params) {
+void FileSelectHelper::FileSelectionCanceled() {
   RunFileChooserEnd();
 }
 
@@ -151,7 +147,7 @@ void FileSelectHelper::OnListDone(int error) {
   std::unique_ptr<ActiveDirectoryEnumeration> entry =
       std::move(directory_enumeration_);
   if (error) {
-    FileSelectionCanceled(nullptr);
+    FileSelectionCanceled();
     return;
   }
 

@@ -1,8 +1,9 @@
+import type * as defaultMenuModule from '@electron/internal/browser/default-menu';
+
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as path from 'path';
 
-import type * as defaultMenuModule from '@electron/internal/browser/default-menu';
 import type * as url from 'url';
 import type * as v8 from 'v8';
 
@@ -200,11 +201,11 @@ delete process.appCodeLoaded;
 if (packagePath) {
   // Finally load app's main.js and transfer control to C++.
   if ((packageJson.type === 'module' && !mainStartupScript.endsWith('.cjs')) || mainStartupScript.endsWith('.mjs')) {
-    const { loadESM } = __non_webpack_require__('internal/process/esm_loader');
+    const { runEntryPointWithESMLoader } = __non_webpack_require__('internal/modules/run_main');
     const main = (require('url') as typeof url).pathToFileURL(path.join(packagePath, mainStartupScript));
-    loadESM(async (esmLoader: any) => {
+    runEntryPointWithESMLoader(async (cascadedLoader: any) => {
       try {
-        await esmLoader.import(main.toString(), undefined, Object.create(null));
+        await cascadedLoader.import(main.toString(), undefined, Object.create(null));
         appCodeLoaded!();
       } catch (err) {
         appCodeLoaded!();
@@ -212,7 +213,7 @@ if (packagePath) {
       }
     });
   } else {
-    // Call appCodeLoaded before just for safety, it doesn't matter here as _load is syncronous
+    // Call appCodeLoaded before just for safety, it doesn't matter here as _load is synchronous
     appCodeLoaded!();
     process._firstFileName = Module._resolveFilename(path.join(packagePath, mainStartupScript), null, false);
     Module._load(path.join(packagePath, mainStartupScript), Module, true);

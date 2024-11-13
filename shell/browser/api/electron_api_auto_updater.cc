@@ -5,7 +5,7 @@
 #include "shell/browser/api/electron_api_auto_updater.h"
 
 #include "base/time/time.h"
-#include "shell/browser/browser.h"
+#include "gin/handle.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/browser/native_window.h"
 #include "shell/browser/window_list.h"
@@ -46,9 +46,9 @@ void AutoUpdater::OnError(const std::string& message) {
         gin::StringToV8(isolate, message),
     };
 
-    gin_helper::MicrotasksScope microtasks_scope(
+    gin_helper::MicrotasksScope microtasks_scope{
         isolate, wrapper->GetCreationContextChecked()->GetMicrotaskQueue(),
-        true);
+        true, v8::MicrotasksScope::kRunMicrotasks};
 
     node::MakeCallback(isolate, wrapper, "emit", args.size(), args.data(),
                        {0, 0});

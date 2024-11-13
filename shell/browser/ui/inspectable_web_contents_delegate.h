@@ -8,7 +8,9 @@
 
 #include <string>
 
-#include "base/files/file_path.h"
+namespace base {
+class FilePath;
+}
 
 namespace electron {
 
@@ -20,7 +22,8 @@ class InspectableWebContentsDelegate {
   virtual void DevToolsReloadPage() {}
   virtual void DevToolsSaveToFile(const std::string& url,
                                   const std::string& content,
-                                  bool save_as) {}
+                                  bool save_as,
+                                  bool is_base64) {}
   virtual void DevToolsAppendToFile(const std::string& url,
                                     const std::string& content) {}
   virtual void DevToolsRequestFileSystems() {}

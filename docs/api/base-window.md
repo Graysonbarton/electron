@@ -64,6 +64,31 @@ const child = new BaseWindow({ parent, modal: true })
 * On Linux the type of modal windows will be changed to `dialog`.
 * On Linux many desktop environments do not support hiding a modal window.
 
+## Resource management
+
+When you add a [`WebContentsView`](web-contents-view.md) to a `BaseWindow` and the `BaseWindow`
+is closed, the [`webContents`](web-contents.md) of the `WebContentsView` are not destroyed
+automatically.
+
+It is your responsibility to close the `webContents` when you no longer need them, e.g. when
+the `BaseWindow` is closed:
+
+```js
+const { BaseWindow, WebContentsView } = require('electron')
+
+const win = new BaseWindow({ width: 800, height: 600 })
+
+const view = new WebContentsView()
+win.contentView.addChildView(view)
+
+win.on('closed', () => {
+  view.webContents.close()
+})
+```
+
+Unlike with a [`BrowserWindow`](browser-window.md), if you don't explicitly close the
+`webContents`, you'll encounter memory leaks.
+
 ## Class: BaseWindow
 
 > Create and control windows.
@@ -126,9 +151,17 @@ or session log off.
 
 #### Event: 'blur'
 
+Returns:
+
+* `event` Event
+
 Emitted when the window loses focus.
 
 #### Event: 'focus'
+
+Returns:
+
+* `event` Event
 
 Emitted when the window gains focus.
 
@@ -479,7 +512,7 @@ Sets the content view of the window.
 
 #### `win.getContentView()`
 
-Returns [View](view.md) - The content view of the window.
+Returns [`View`](view.md) - The content view of the window.
 
 #### `win.destroy()`
 
@@ -600,7 +633,7 @@ Perhaps there are 15 pixels of controls on the left edge, 25 pixels of controls
 on the right edge and 50 pixels of controls below the player. In order to
 maintain a 16:9 aspect ratio (standard aspect ratio for HD @1920x1080) within
 the player itself we would call this function with arguments of 16/9 and
-{ width: 40, height: 50 }. The second argument doesn't care where the extra width and height
+\{ width: 40, height: 50 \}. The second argument doesn't care where the extra width and height
 are within the content view--only that they exist. Sum any extra width and
 height areas you have within the overall content view.
 
@@ -925,6 +958,17 @@ win.setSheetOffset(toolbarRect.height)
 ```
 
 #### `win.flashFrame(flag)`
+
+<!--
+```YAML history
+added:
+  - pr-url: https://github.com/electron/electron/pull/35658
+changes:
+  - pr-url: https://github.com/electron/electron/pull/41391
+    description: "`window.flashFrame(bool)` will flash dock icon continuously on macOS"
+    breaking-changes-header: behavior-changed-windowflashframebool-will-flash-dock-icon-continuously-on-macos
+```
+-->
 
 * `flag` boolean
 
@@ -1370,15 +1414,16 @@ machine has a touch bar.
 **Note:** The TouchBar API is currently experimental and may change or be
 removed in future Electron releases.
 
-#### `win.setTitleBarOverlay(options)` _Windows_
+#### `win.setTitleBarOverlay(options)` _Windows_ _Linux_
 
 * `options` Object
-  * `color` String (optional) _Windows_ - The CSS color of the Window Controls Overlay when enabled.
-  * `symbolColor` String (optional) _Windows_ - The CSS color of the symbols on the Window Controls Overlay when enabled.
-  * `height` Integer (optional) _Windows_ - The height of the title bar and Window Controls Overlay in pixels.
+  * `color` String (optional) - The CSS color of the Window Controls Overlay when enabled.
+  * `symbolColor` String (optional) - The CSS color of the symbols on the Window Controls Overlay when enabled.
+  * `height` Integer (optional) - The height of the title bar and Window Controls Overlay in pixels.
 
-On a Window with Window Controls Overlay already enabled, this method updates
-the style of the title bar overlay.
+On a Window with Window Controls Overlay already enabled, this method updates the style of the title bar overlay.
+
+On Linux, the `symbolColor` is automatically calculated to have minimum accessible contrast to the `color` if not explicitly set.
 
 [quick-look]: https://en.wikipedia.org/wiki/Quick_Look
 [vibrancy-docs]: https://developer.apple.com/documentation/appkit/nsvisualeffectview?preferredLanguage=objc

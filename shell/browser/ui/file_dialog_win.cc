@@ -16,13 +16,14 @@
 
 #include "base/files/file_util.h"
 #include "base/i18n/case_conversion.h"
-#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/win/registry.h"
 #include "shell/browser/native_window_views.h"
 #include "shell/browser/ui/win/dialog_thread.h"
 #include "shell/common/gin_converters/file_path_converter.h"
+#include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/promise.h"
 
 namespace file_dialog {
 
@@ -78,7 +79,6 @@ static HRESULT GetFileNameFromShellItem(IShellItem* pShellItem,
       wcscpy_s(lpstr, cchLength, lpstrName);
     } else {
       NOTREACHED();
-      hRet = DISP_E_BUFFERTOOSMALL;
     }
 
     ::CoTaskMemFree(lpstrName);

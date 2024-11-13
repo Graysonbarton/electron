@@ -690,6 +690,8 @@ Sets whether the window should be in fullscreen mode.
 
 Returns `boolean` - Whether the window is in fullscreen mode.
 
+**Note:** On macOS, fullscreen transitions take place asynchronously. When querying for a BrowserWindow's fullscreen status, you should ensure that either the ['enter-full-screen'](browser-window.md#event-enter-full-screen) or ['leave-full-screen'](browser-window.md#event-leave-full-screen) events have been emitted.
+
 #### `win.setSimpleFullScreen(flag)` _macOS_
 
 * `flag` boolean
@@ -723,7 +725,7 @@ Perhaps there are 15 pixels of controls on the left edge, 25 pixels of controls
 on the right edge and 50 pixels of controls below the player. In order to
 maintain a 16:9 aspect ratio (standard aspect ratio for HD @1920x1080) within
 the player itself we would call this function with arguments of 16/9 and
-{ width: 40, height: 50 }. The second argument doesn't care where the extra width and height
+\{ width: 40, height: 50 \}. The second argument doesn't care where the extra width and height
 are within the content view--only that they exist. Sum any extra width and
 height areas you have within the overall content view.
 
@@ -1048,6 +1050,15 @@ win.setSheetOffset(toolbarRect.height)
 ```
 
 #### `win.flashFrame(flag)`
+
+<!--
+```YAML history
+changes:
+  - pr-url: https://github.com/electron/electron/pull/41391
+    description: "`window.flashFrame(bool)` will flash dock icon continuously on macOS"
+    breaking-changes-header: behavior-changed-windowflashframebool-will-flash-dock-icon-continuously-on-macos
+```
+-->
 
 * `flag` boolean
 
@@ -1538,13 +1549,17 @@ there is only one tab in the current window.
 
 Adds a window as a tab on this window, after the tab for the window instance.
 
-#### `win.setVibrancy(type)` _macOS_
+#### `win.setVibrancy(type[, options])` _macOS_
 
 * `type` string | null - Can be `titlebar`, `selection`, `menu`, `popover`, `sidebar`, `header`, `sheet`, `window`, `hud`, `fullscreen-ui`, `tooltip`, `content`, `under-window`, or `under-page`. See
   the [macOS documentation][vibrancy-docs] for more details.
+* `options` Object (optional)
+  * `animationDuration` number (optional) - if greater than zero, the change to vibrancy will be animated over the given duration (in milliseconds).
 
 Adds a vibrancy effect to the browser window. Passing `null` or an empty string
-will remove the vibrancy effect on the window.
+will remove the vibrancy effect on the window. The `animationDuration` parameter only
+ animates fading in or fading out the vibrancy effect. Animating between
+ different types of vibrancy is not supported.
 
 #### `win.setBackgroundMaterial(material)` _Windows_
 
@@ -1641,15 +1656,16 @@ with `addBrowserView` or `setBrowserView`. The top-most BrowserView is the last 
 > The `BrowserView` class is deprecated, and replaced by the new
 > [`WebContentsView`](web-contents-view.md) class.
 
-#### `win.setTitleBarOverlay(options)` _Windows_
+#### `win.setTitleBarOverlay(options)` _Windows_ _Linux_
 
 * `options` Object
-  * `color` String (optional) _Windows_ - The CSS color of the Window Controls Overlay when enabled.
-  * `symbolColor` String (optional) _Windows_ - The CSS color of the symbols on the Window Controls Overlay when enabled.
-  * `height` Integer (optional) _macOS_ _Windows_ - The height of the title bar and Window Controls Overlay in pixels.
+  * `color` String (optional) - The CSS color of the Window Controls Overlay when enabled.
+  * `symbolColor` String (optional) - The CSS color of the symbols on the Window Controls Overlay when enabled.
+  * `height` Integer (optional) - The height of the title bar and Window Controls Overlay in pixels.
 
-On a Window with Window Controls Overlay already enabled, this method updates
-the style of the title bar overlay.
+On a window with Window Controls Overlay already enabled, this method updates the style of the title bar overlay.
+
+On Linux, the `symbolColor` is automatically calculated to have minimum accessible contrast to the `color` if not explicitly set.
 
 [page-visibility-api]: https://developer.mozilla.org/en-US/docs/Web/API/Page_Visibility_API
 [quick-look]: https://en.wikipedia.org/wiki/Quick_Look

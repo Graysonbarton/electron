@@ -1,13 +1,16 @@
-import { BrowserWindow, app } from 'electron/main';
 import { shell } from 'electron/common';
-import { closeAllWindows } from './lib/window-helpers';
-import { ifdescribe, ifit, listen } from './lib/spec-helpers';
+import { BrowserWindow, app } from 'electron/main';
+
+import { expect } from 'chai';
+
+import { once } from 'node:events';
+import * as fs from 'node:fs';
 import * as http from 'node:http';
-import * as fs from 'fs-extra';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { expect } from 'chai';
-import { once } from 'node:events';
+
+import { ifdescribe, ifit, listen } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
 
 describe('shell module', () => {
   describe('shell.openExternal()', () => {
@@ -73,15 +76,30 @@ describe('shell module', () => {
         requestReceived
       ]);
     });
+
+    ifit(process.platform === 'darwin')('removes focus from the electron window after opening an external link', async () => {
+      const url = 'http://127.0.0.1';
+      const w = new BrowserWindow({ show: true });
+
+      await once(w, 'focus');
+      expect(w.isFocused()).to.be.true();
+
+      await Promise.all<void>([
+        shell.openExternal(url),
+        once(w, 'blur') as Promise<any>
+      ]);
+
+      expect(w.isFocused()).to.be.false();
+    });
   });
 
   describe('shell.trashItem()', () => {
     afterEach(closeAllWindows);
 
     it('moves an item to the trash', async () => {
-      const dir = await fs.mkdtemp(path.resolve(app.getPath('temp'), 'electron-shell-spec-'));
+      const dir = await fs.promises.mkdtemp(path.resolve(app.getPath('temp'), 'electron-shell-spec-'));
       const filename = path.join(dir, 'temp-to-be-deleted');
-      await fs.writeFile(filename, 'dummy-contents');
+      await fs.promises.writeFile(filename, 'dummy-contents');
       await shell.trashItem(filename);
       expect(fs.existsSync(filename)).to.be.false();
     });

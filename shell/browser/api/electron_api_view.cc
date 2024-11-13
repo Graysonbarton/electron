@@ -10,7 +10,9 @@
 #include <string>
 #include <utility>
 
+#include "ash/style/rounded_rect_cutout_path_builder.h"
 #include "gin/data_object_builder.h"
+#include "gin/handle.h"
 #include "gin/wrappable.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/common/gin_converters/callback_converter.h"
@@ -123,6 +125,15 @@ struct Converter<views::FlexAllocationOrder> {
 };
 
 template <>
+struct Converter<electron::api::View> {
+  static bool FromV8(v8::Isolate* isolate,
+                     v8::Local<v8::Value> val,
+                     electron::api::View* out) {
+    return gin::ConvertFromV8(isolate, val, &out);
+  }
+};
+
+template <>
 struct Converter<views::SizeBound> {
   static v8::Local<v8::Value> ToV8(v8::Isolate* isolate,
                                    const views::SizeBound& in) {
@@ -155,6 +166,7 @@ class JSLayoutManager : public views::LayoutManagerBase {
       : layout_callback_(std::move(layout_callback)) {}
   ~JSLayoutManager() override {}
 
+  // views::LayoutManagerBase
   views::ProposedLayout CalculateProposedLayout(
       const views::SizeBounds& size_bounds) const override {
     v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
@@ -178,7 +190,27 @@ View::~View() {
     return;
   view_->RemoveObserver(this);
   if (delete_view_)
-    delete view_;
+    view_.ClearAndDelete();
+}
+
+void View::ReorderChildView(gin::Handle<View> child, size_t index) {
+  view_->ReorderChildView(child->view(), index);
+
+  const auto i = base::ranges::find(child_views_, child.ToV8());
+  DCHECK(i != child_views_.end());
+
+  // If |view| is already at the desired position, there's nothing to do.
+  const auto pos = std::next(
+      child_views_.begin(),
+      static_cast<ptrdiff_t>(std::min(index, child_views_.size() - 1)));
+  if (i == pos)
+    return;
+
+  if (pos < i) {
+    std::rotate(pos, i, std::next(i));
+  } else {
+    std::rotate(i, std::next(i), std::next(pos));
+  }
 }
 
 void View::AddChildViewAt(gin::Handle<View> child,
@@ -189,8 +221,25 @@ void View::AddChildViewAt(gin::Handle<View> child,
   // has a View, possibly a wrapper view around the underlying platform View.
   if (!view_)
     return;
+
+  // This will CHECK and crash in View::AddChildViewAtImpl if not handled here.
+  if (view_ == child->view()) {
+    gin_helper::ErrorThrower(isolate()).ThrowError(
+        "A view cannot be added as its own child");
+    return;
+  }
+
   size_t index =
       std::min(child_views_.size(), maybe_index.value_or(child_views_.size()));
+
+  // If the child is already a child of this view, just reorder it.
+  // This matches the behavior of View::AddChildViewAtImpl and
+  // otherwise will CHECK if the same view is added multiple times.
+  if (child->view()->parent() == view_) {
+    ReorderChildView(child, index);
+    return;
+  }
+
   child_views_.emplace(child_views_.begin() + index,     // index
                        isolate(), child->GetWrapper());  // v8::Global(args...)
 #if BUILDFLAG(IS_MAC)
@@ -211,15 +260,19 @@ void View::AddChildViewAt(gin::Handle<View> child,
 void View::RemoveChildView(gin::Handle<View> child) {
   if (!view_)
     return;
-  if (!child->view())
-    return;
-  auto it = std::find(child_views_.begin(), child_views_.end(), child.ToV8());
+
+  const auto it = base::ranges::find(child_views_, child.ToV8());
   if (it != child_views_.end()) {
 #if BUILDFLAG(IS_MAC)
     ScopedCAActionDisabler disable_animations;
 #endif
-    view_->RemoveChildView(child->view());
+    // Remove from child_views first so that OnChildViewRemoved doesn't try to
+    // remove it again
     child_views_.erase(it);
+    // It's possible for the child's view to be invalid here
+    // if the child's webContents was closed or destroyed.
+    if (child->view())
+      view_->RemoveChildView(child->view());
   }
 }
 
@@ -298,6 +351,38 @@ void View::SetBackgroundColor(std::optional<WrappedSkColor> color) {
   view_->SetBackground(color ? views::CreateSolidBackground(*color) : nullptr);
 }
 
+void View::SetBorderRadius(int radius) {
+  border_radius_ = radius;
+  ApplyBorderRadius();
+}
+
+void View::ApplyBorderRadius() {
+  if (!border_radius_.has_value() || !view_)
+    return;
+
+  auto size = view_->bounds().size();
+
+  // Restrict border radius to the constraints set in the path builder class.
+  // If the constraints are exceeded, the builder will crash.
+  int radius;
+  {
+    float r = border_radius_.value() * 1.f;
+    r = std::min(r, size.width() / 2.f);
+    r = std::min(r, size.height() / 2.f);
+    r = std::max(r, 0.f);
+    radius = std::floor(r);
+  }
+
+  // RoundedRectCutoutPathBuilder has a minimum size of 32 x 32.
+  if (radius > 0 && size.width() >= 32 && size.height() >= 32) {
+    auto builder = ash::RoundedRectCutoutPathBuilder(gfx::SizeF(size));
+    builder.CornerRadius(radius);
+    view_->SetClipPath(builder.Build());
+  } else {
+    view_->SetClipPath(SkPath());
+  }
+}
+
 void View::SetVisible(bool visible) {
   if (!view_)
     return;
@@ -305,12 +390,26 @@ void View::SetVisible(bool visible) {
 }
 
 void View::OnViewBoundsChanged(views::View* observed_view) {
+  ApplyBorderRadius();
   Emit("bounds-changed");
 }
 
 void View::OnViewIsDeleting(views::View* observed_view) {
   DCHECK_EQ(observed_view, view_);
   view_ = nullptr;
+}
+
+void View::OnChildViewRemoved(views::View* observed_view, views::View* child) {
+  v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
+  auto it = std::ranges::find_if(
+      child_views_, [&](const v8::Global<v8::Object>& child_view) {
+        View current_view;
+        gin::ConvertFromV8(isolate, child_view.Get(isolate), &current_view);
+        return current_view.view()->GetID() == child->GetID();
+      });
+  if (it != child_views_.end()) {
+    child_views_.erase(it);
+  }
 }
 
 // static
@@ -353,6 +452,7 @@ void View::BuildPrototype(v8::Isolate* isolate,
       .SetMethod("setBounds", &View::SetBounds)
       .SetMethod("getBounds", &View::GetBounds)
       .SetMethod("setBackgroundColor", &View::SetBackgroundColor)
+      .SetMethod("setBorderRadius", &View::SetBorderRadius)
       .SetMethod("setLayout", &View::SetLayout)
       .SetMethod("setVisible", &View::SetVisible);
 }

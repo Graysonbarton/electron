@@ -21,14 +21,12 @@
 #include <vector>
 
 #include "base/containers/contains.h"
-#include "base/memory/raw_ptr.h"
-#include "base/stl_util.h"
+#include "base/memory/raw_ref.h"
+#include "base/numerics/ranges.h"
 #include "base/strings/utf_string_conversions.h"
-#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/desktop_media_id.h"
+#include "content/public/common/color_parser.h"
 #include "shell/browser/api/electron_api_web_contents.h"
-#include "shell/browser/ui/inspectable_web_contents.h"
-#include "shell/browser/ui/inspectable_web_contents_view.h"
 #include "shell/browser/ui/views/root_view.h"
 #include "shell/browser/web_contents_preferences.h"
 #include "shell/browser/web_view_manager.h"
@@ -39,6 +37,7 @@
 #include "shell/common/options_switches.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/hit_test.h"
+#include "ui/display/screen.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/native_widget_types.h"
 #include "ui/ozone/public/ozone_platform.h"
@@ -56,8 +55,8 @@
 #include "shell/browser/linux/unity_service.h"
 #include "shell/browser/ui/electron_desktop_window_tree_host_linux.h"
 #include "shell/browser/ui/views/client_frame_view_linux.h"
-#include "shell/browser/ui/views/frameless_view.h"
 #include "shell/browser/ui/views/native_frame_view.h"
+#include "shell/browser/ui/views/opaque_frame_view.h"
 #include "shell/common/platform_util.h"
 #include "ui/views/widget/desktop_aura/desktop_native_widget_aura.h"
 #include "ui/views/window/native_frame_view.h"
@@ -75,14 +74,12 @@
 #elif BUILDFLAG(IS_WIN)
 #include "base/win/win_util.h"
 #include "base/win/windows_version.h"
-#include "content/public/common/color_parser.h"
 #include "shell/browser/ui/views/win_frame_view.h"
 #include "shell/browser/ui/win/electron_desktop_native_widget_aura.h"
 #include "skia/ext/skia_utils_win.h"
-#include "ui/base/win/shell.h"
-#include "ui/display/screen.h"
 #include "ui/display/win/screen_win.h"
 #include "ui/gfx/color_utils.h"
+#include "ui/gfx/win/hwnd_util.h"
 #include "ui/gfx/win/msg_util.h"
 #endif
 
@@ -184,6 +181,7 @@ class NativeWindowClientView : public views::ClientView {
   NativeWindowClientView(const NativeWindowClientView&) = delete;
   NativeWindowClientView& operator=(const NativeWindowClientView&) = delete;
 
+  // views::ClientView
   views::CloseRequestResult OnWindowCloseRequested() override {
     window_->NotifyWindowCloseButtonClicked();
     return views::CloseRequestResult::kCannotClose;
@@ -218,6 +216,7 @@ NativeWindowViews::NativeWindowViews(const gin_helper::Dictionary& options,
 
   overlay_button_color_ = color_utils::GetSysSkColor(COLOR_BTNFACE);
   overlay_symbol_color_ = color_utils::GetSysSkColor(COLOR_BTNTEXT);
+#endif
 
   v8::Local<v8::Value> titlebar_overlay;
   if (options.Get(options::ktitleBarOverlay, &titlebar_overlay) &&
@@ -243,9 +242,11 @@ NativeWindowViews::NativeWindowViews(const gin_helper::Dictionary& options,
     }
   }
 
-  if (title_bar_style_ != TitleBarStyle::kNormal)
+  // |hidden| is the only non-default titleBarStyle valid on Windows and Linux.
+  if (title_bar_style_ == TitleBarStyle::kHidden)
     set_has_frame(false);
 
+#if BUILDFLAG(IS_WIN)
   // If the taskbar is re-created after we start up, we have to rebuild all of
   // our buttons.
   taskbar_created_message_ = RegisterWindowMessage(TEXT("TaskbarCreated"));
@@ -267,25 +268,25 @@ NativeWindowViews::NativeWindowViews(const gin_helper::Dictionary& options,
 
   widget()->AddObserver(this);
 
-  views::Widget::InitParams params;
-  params.ownership = views::Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET;
+  using InitParams = views::Widget::InitParams;
+  auto params = InitParams{InitParams::WIDGET_OWNS_NATIVE_WIDGET,
+                           InitParams::TYPE_WINDOW};
   params.bounds = bounds;
   params.delegate = this;
-  params.type = views::Widget::InitParams::TYPE_WINDOW;
   params.remove_standard_frame = !has_frame() || has_client_frame();
 
   // If a client frame, we need to draw our own shadows.
   if (IsTranslucent() || has_client_frame())
-    params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
+    params.opacity = InitParams::WindowOpacity::kTranslucent;
 
   // The given window is most likely not rectangular since it is translucent and
   // has no standard frame, don't show a shadow for it.
   if (IsTranslucent() && !has_frame())
-    params.shadow_type = views::Widget::InitParams::ShadowType::kNone;
+    params.shadow_type = InitParams::ShadowType::kNone;
 
   bool focusable;
   if (options.Get(options::kFocusable, &focusable) && !focusable)
-    params.activatable = views::Widget::InitParams::Activatable::kNo;
+    params.activatable = InitParams::Activatable::kNo;
 
 #if BUILDFLAG(IS_WIN)
   if (parent)
@@ -309,7 +310,7 @@ NativeWindowViews::NativeWindowViews(const gin_helper::Dictionary& options,
 #endif
 
   widget()->Init(std::move(params));
-  widget()->SetNativeWindowProperty(kElectronNativeWindowKey, this);
+  widget()->SetNativeWindowProperty(kElectronNativeWindowKey.c_str(), this);
   SetCanResize(resizable_);
 
   bool fullscreen = false;
@@ -410,9 +411,9 @@ NativeWindowViews::NativeWindowViews(const gin_helper::Dictionary& options,
 #if BUILDFLAG(IS_WIN)
   // Save initial window state.
   if (fullscreen)
-    last_window_state_ = ui::SHOW_STATE_FULLSCREEN;
+    last_window_state_ = ui::mojom::WindowShowState::kFullscreen;
   else
-    last_window_state_ = ui::SHOW_STATE_NORMAL;
+    last_window_state_ = ui::mojom::WindowShowState::kNormal;
 #endif
 
   // Listen to mouse events.
@@ -537,6 +538,11 @@ void NativeWindowViews::ShowInactive() {
 #if BUILDFLAG(IS_LINUX)
   if (global_menu_bar_)
     global_menu_bar_->OnWindowMapped();
+
+  // On X11, setting Z order before showing the window doesn't take effect,
+  // so we have to call it again.
+  if (IsX11())
+    widget()->SetZOrderLevel(widget()->GetZOrderLevel());
 #endif
 }
 
@@ -569,7 +575,7 @@ bool NativeWindowViews::IsVisible() const {
   // current window.
   bool visible =
       ::GetWindowLong(GetAcceleratedWidget(), GWL_STYLE) & WS_VISIBLE;
-  // WS_VISIBLE is true even if a window is miminized - explicitly check that.
+  // WS_VISIBLE is true even if a window is minimized - explicitly check that.
   return visible && !IsMinimized();
 #else
   return widget()->IsVisible();
@@ -640,8 +646,8 @@ void NativeWindowViews::Maximize() {
   if (IsVisible()) {
     widget()->Maximize();
   } else {
-    widget()->native_widget_private()->Show(ui::SHOW_STATE_MAXIMIZED,
-                                            gfx::Rect());
+    widget()->native_widget_private()->Show(
+        ui::mojom::WindowShowState::kMaximized, gfx::Rect());
     NotifyWindowShow();
   }
 }
@@ -689,8 +695,8 @@ void NativeWindowViews::Minimize() {
   if (IsVisible())
     widget()->Minimize();
   else
-    widget()->native_widget_private()->Show(ui::SHOW_STATE_MINIMIZED,
-                                            gfx::Rect());
+    widget()->native_widget_private()->Show(
+        ui::mojom::WindowShowState::kMinimized, gfx::Rect());
 }
 
 void NativeWindowViews::Restore() {
@@ -714,10 +720,10 @@ void NativeWindowViews::SetFullScreen(bool fullscreen) {
   bool leaving_fullscreen = IsFullscreen() && !fullscreen;
 
   if (fullscreen) {
-    last_window_state_ = ui::SHOW_STATE_FULLSCREEN;
+    last_window_state_ = ui::mojom::WindowShowState::kFullscreen;
     NotifyWindowEnterFullScreen();
   } else {
-    last_window_state_ = ui::SHOW_STATE_NORMAL;
+    last_window_state_ = ui::mojom::WindowShowState::kNormal;
     NotifyWindowLeaveFullScreen();
   }
 
@@ -745,12 +751,30 @@ void NativeWindowViews::SetFullScreen(bool fullscreen) {
   // Note: the following must be after "widget()->SetFullscreen(fullscreen);"
   if (leaving_fullscreen && !IsVisible())
     FlipWindowStyle(GetAcceleratedWidget(), true, WS_VISIBLE);
+
+  // Auto-hide menubar when in fullscreen.
+  if (fullscreen) {
+    menu_bar_visible_before_fullscreen_ = IsMenuBarVisible();
+    SetMenuBarVisibility(false);
+  } else {
+    // No fullscreen -> fullscreen video -> un-fullscreen video results
+    // in `NativeWindowViews::SetFullScreen(false)` being called twice.
+    // `menu_bar_visible_before_fullscreen_` is always false on the
+    //  second call which results in `SetMenuBarVisibility(false)` no
+    // matter what. We check `leaving_fullscreen` to avoid this.
+    if (!leaving_fullscreen)
+      return;
+
+    SetMenuBarVisibility(!IsMenuBarAutoHide() &&
+                         menu_bar_visible_before_fullscreen_);
+    menu_bar_visible_before_fullscreen_ = false;
+  }
 #else
   if (IsVisible())
     widget()->SetFullscreen(fullscreen);
   else if (fullscreen)
-    widget()->native_widget_private()->Show(ui::SHOW_STATE_FULLSCREEN,
-                                            gfx::Rect());
+    widget()->native_widget_private()->Show(
+        ui::mojom::WindowShowState::kFullscreen, gfx::Rect());
 
   // Auto-hide menubar when in fullscreen.
   if (fullscreen) {
@@ -993,8 +1017,6 @@ bool NativeWindowViews::IsMaximizable() const {
 #endif
 }
 
-void NativeWindowViews::SetExcludedFromShownWindowsMenu(bool excluded) {}
-
 bool NativeWindowViews::IsExcludedFromShownWindowsMenu() const {
   // return false on unsupported platforms
   return false;
@@ -1069,8 +1091,23 @@ ui::ZOrderLevel NativeWindowViews::GetZOrderLevel() const {
   return widget()->GetZOrderLevel();
 }
 
+// We previous called widget()->CenterWindow() here, but in
+// Chromium CL 4916277 behavior was changed to center relative to the
+// parent window if there is one. We want to keep the old behavior
+// for now to avoid breaking API contract, but should consider the long
+// term plan for this aligning with upstream.
 void NativeWindowViews::Center() {
-  widget()->CenterWindow(GetSize());
+#if BUILDFLAG(IS_LINUX)
+  auto display =
+      display::Screen::GetScreen()->GetDisplayNearestWindow(GetNativeWindow());
+  gfx::Rect window_bounds_in_screen = display.work_area();
+  window_bounds_in_screen.ClampToCenteredSize(GetSize());
+  widget()->SetBounds(window_bounds_in_screen);
+#else
+  HWND hwnd = GetAcceleratedWidget();
+  gfx::Size size = display::win::ScreenWin::DIPToScreenSize(hwnd, GetSize());
+  gfx::CenterAndSizeWindow(nullptr, hwnd, size);
+#endif
 }
 
 void NativeWindowViews::Invalidate() {
@@ -1624,10 +1661,18 @@ void NativeWindowViews::OnWidgetBoundsChanged(views::Widget* changed_widget,
   if (changed_widget != widget())
     return;
 
-  // Note: We intentionally use `GetBounds()` instead of `bounds` to properly
-  // handle minimized windows on Windows.
+  // |GetWindowBoundsInScreen| has a ~1 pixel margin of error, so if we check
+  // existing bounds directly against the new bounds without accounting for that
+  // we'll have constant false positives when the window is moving but the user
+  // hasn't changed its size at all.
+  auto areWithinOnePixel = [](gfx::Size old_size, gfx::Size new_size) -> bool {
+    return base::IsApproximatelyEqual(old_size.width(), new_size.width(), 1) &&
+           base::IsApproximatelyEqual(old_size.height(), new_size.height(), 1);
+  };
+
+  // We use |GetBounds| to account for minimized windows on Windows.
   const auto new_bounds = GetBounds();
-  if (widget_size_ != new_bounds.size()) {
+  if (!areWithinOnePixel(widget_size_, new_bounds.size())) {
     NotifyWindowResize();
     widget_size_ = new_bounds.size();
   }
@@ -1687,11 +1732,15 @@ NativeWindowViews::CreateNonClientFrameView(views::Widget* widget) {
   if (has_frame() && !has_client_frame()) {
     return std::make_unique<NativeFrameView>(this, widget);
   } else {
-    auto frame_view = has_frame() && has_client_frame()
-                          ? std::make_unique<ClientFrameViewLinux>()
-                          : std::make_unique<FramelessView>();
-    frame_view->Init(this, widget);
-    return frame_view;
+    if (has_frame() && has_client_frame()) {
+      auto frame_view = std::make_unique<ClientFrameViewLinux>();
+      frame_view->Init(this, widget);
+      return frame_view;
+    } else {
+      auto frame_view = std::make_unique<OpaqueFrameView>();
+      frame_view->Init(this, widget);
+      return frame_view;
+    }
   }
 #endif
 }
@@ -1702,7 +1751,7 @@ void NativeWindowViews::OnWidgetMove() {
 
 void NativeWindowViews::HandleKeyboardEvent(
     content::WebContents*,
-    const content::NativeWebKeyboardEvent& event) {
+    const input::NativeWebKeyboardEvent& event) {
   if (widget_destroyed_)
     return;
 
@@ -1719,7 +1768,7 @@ void NativeWindowViews::HandleKeyboardEvent(
 }
 
 void NativeWindowViews::OnMouseEvent(ui::MouseEvent* event) {
-  if (event->type() != ui::ET_MOUSE_PRESSED)
+  if (event->type() != ui::EventType::kMousePressed)
     return;
 
   // Alt+Click should not toggle menu bar.
@@ -1733,22 +1782,22 @@ void NativeWindowViews::OnMouseEvent(ui::MouseEvent* event) {
 #endif
 }
 
-ui::WindowShowState NativeWindowViews::GetRestoredState() {
+ui::mojom::WindowShowState NativeWindowViews::GetRestoredState() {
   if (IsMaximized()) {
 #if BUILDFLAG(IS_WIN)
     // Only restore Maximized state when window is NOT transparent style
     if (!transparent()) {
-      return ui::SHOW_STATE_MAXIMIZED;
+      return ui::mojom::WindowShowState::kMaximized;
     }
 #else
-    return ui::SHOW_STATE_MAXIMIZED;
+    return ui::mojom::WindowShowState::kMinimized;
 #endif
   }
 
   if (IsFullscreen())
-    return ui::SHOW_STATE_FULLSCREEN;
+    return ui::mojom::WindowShowState::kFullscreen;
 
-  return ui::SHOW_STATE_NORMAL;
+  return ui::mojom::WindowShowState::kNormal;
 }
 
 void NativeWindowViews::MoveBehindTaskBarIfNeeded() {
@@ -1763,9 +1812,10 @@ void NativeWindowViews::MoveBehindTaskBarIfNeeded() {
 }
 
 // static
-NativeWindow* NativeWindow::Create(const gin_helper::Dictionary& options,
-                                   NativeWindow* parent) {
-  return new NativeWindowViews(options, parent);
+std::unique_ptr<NativeWindow> NativeWindow::Create(
+    const gin_helper::Dictionary& options,
+    NativeWindow* parent) {
+  return std::make_unique<NativeWindowViews>(options, parent);
 }
 
 }  // namespace electron

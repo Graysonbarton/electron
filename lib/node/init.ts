@@ -1,10 +1,15 @@
+/* eslint-disable import/newline-after-import */
+/* eslint-disable import/order */
 // Initialize ASAR support in fs module.
 import { wrapFsWithAsar } from './asar-fs-wrapper';
 wrapFsWithAsar(require('fs'));
 
 // See ElectronRendererClient::DidCreateScriptContext.
-if ((globalThis as any).blinkFetch) {
-  globalThis.fetch = (globalThis as any).blinkFetch;
+if ((globalThis as any).blinkfetch) {
+  const keys = ['fetch', 'Response', 'FormData', 'Request', 'Headers', 'EventSource'];
+  for (const key of keys) {
+    (globalThis as any)[key] = (globalThis as any)[`blink${key}`];
+  }
 }
 
 // Hook child_process.fork.

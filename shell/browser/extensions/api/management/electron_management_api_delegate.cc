@@ -9,10 +9,6 @@
 #include <string>
 #include <utility>
 
-#include "base/functional/bind.h"
-#include "base/strings/strcat.h"
-#include "base/strings/stringprintf.h"
-#include "base/strings/utf_string_conversions.h"
 #include "chrome/common/extensions/extension_metrics.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
 #include "chrome/common/webui_url_constants.h"
@@ -27,6 +23,7 @@
 #include "extensions/common/api/management.h"
 #include "extensions/common/extension.h"
 #include "services/data_decoder/public/cpp/data_decoder.h"
+#include "third_party/abseil-cpp/absl/strings/str_format.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom.h"
 
 namespace {
@@ -203,12 +200,12 @@ void ElectronManagementAPIDelegate::SetLaunchType(
 GURL ElectronManagementAPIDelegate::GetIconURL(
     const extensions::Extension* extension,
     int icon_size,
-    ExtensionIconSet::MatchType match,
+    ExtensionIconSet::Match match,
     bool grayscale) const {
-  GURL icon_url(base::StringPrintf("%s%s/%d/%d%s",
-                                   chrome::kChromeUIExtensionIconURL,
-                                   extension->id().c_str(), icon_size, match,
-                                   grayscale ? "?grayscale=true" : ""));
+  GURL icon_url(absl::StrFormat(
+      "%s%s/%d/%d%s", chrome::kChromeUIExtensionIconURL,
+      extension->id().c_str(), icon_size, static_cast<int>(match),
+      grayscale ? "?grayscale=true" : ""));
   CHECK(icon_url.is_valid());
   return icon_url;
 }
@@ -219,3 +216,9 @@ GURL ElectronManagementAPIDelegate::GetEffectiveUpdateURL(
   // TODO(codebytere): we do not currently support ExtensionManagement.
   return GURL::EmptyGURL();
 }
+
+void ElectronManagementAPIDelegate::ShowMv2DeprecationReEnableDialog(
+    content::BrowserContext* context,
+    content::WebContents* web_contents,
+    const extensions::Extension& extension,
+    base::OnceCallback<void(bool)> done_callback) const {}

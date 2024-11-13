@@ -16,7 +16,6 @@
 #include "base/strings/string_number_conversions.h"
 #include "chrome/common/chrome_paths.h"
 #include "content/public/common/content_switches.h"
-#include "shell/common/electron_paths.h"
 
 namespace logging {
 
@@ -41,6 +40,8 @@ base::FilePath GetLogFileName(const base::CommandLine& command_line) {
     return log_filename;
   }
 }
+
+namespace {
 
 bool HasExplicitLogFile(const base::CommandLine& command_line) {
   std::string filename = command_line.GetSwitchValueASCII(switches::kLogFile);
@@ -95,6 +96,8 @@ LoggingDestination DetermineLoggingDestination(
     return LOG_TO_FILE | (also_log_to_stderr ? LOG_TO_STDERR : 0);
   return LOG_TO_SYSTEM_DEBUG_LOG | LOG_TO_STDERR;
 }
+
+}  // namespace
 
 void InitElectronLogging(const base::CommandLine& command_line,
                          bool is_preinit) {

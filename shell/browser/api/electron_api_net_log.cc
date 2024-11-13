@@ -15,13 +15,13 @@
 #include "components/net_log/chrome_net_log.h"
 #include "content/public/browser/storage_partition.h"
 #include "electron/electron_version.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "net/log/net_log_capture_mode.h"
 #include "shell/browser/electron_browser_context.h"
 #include "shell/browser/net/system_network_context_manager.h"
 #include "shell/common/gin_converters/file_path_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/node_includes.h"
 
 namespace gin {
 
@@ -166,6 +166,7 @@ void NetLog::StartNetLogAfterCreateFile(net::NetLogCaptureMode capture_mode,
     std::move(*pending_start_promise_)
         .RejectWithErrorMessage(
             base::File::ErrorToString(output_file.error_details()));
+    pending_start_promise_.reset();
     net_log_exporter_.reset();
     return;
   }
@@ -178,6 +179,7 @@ void NetLog::StartNetLogAfterCreateFile(net::NetLogCaptureMode capture_mode,
 void NetLog::NetLogStarted(int32_t error) {
   DCHECK(pending_start_promise_);
   ResolvePromiseWithNetError(std::move(*pending_start_promise_), error);
+  pending_start_promise_.reset();
 }
 
 void NetLog::OnConnectionError() {
@@ -185,6 +187,7 @@ void NetLog::OnConnectionError() {
   if (pending_start_promise_) {
     std::move(*pending_start_promise_)
         .RejectWithErrorMessage("Failed to start net log exporter");
+    pending_start_promise_.reset();
   }
 }
 

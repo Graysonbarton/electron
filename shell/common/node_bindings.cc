@@ -21,11 +21,11 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/trace_event.h"
 #include "chrome/common/chrome_version.h"
-#include "content/public/browser/browser_thread.h"
 #include "content/public/common/content_paths.h"
 #include "electron/buildflags/buildflags.h"
 #include "electron/electron_version.h"
 #include "electron/fuses.h"
+#include "electron/mas.h"
 #include "shell/browser/api/electron_api_app.h"
 #include "shell/common/api/electron_bindings.h"
 #include "shell/common/electron_command_line.h"
@@ -36,7 +36,9 @@
 #include "shell/common/gin_helper/event_emitter_caller.h"
 #include "shell/common/gin_helper/microtasks_scope.h"
 #include "shell/common/mac/main_application_bundle.h"
+#include "shell/common/node_includes.h"
 #include "shell/common/node_util.h"
+#include "shell/common/process_util.h"
 #include "shell/common/world_ids.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_initializer.h"  // nogncheck
@@ -100,9 +102,10 @@
   V(electron_renderer_ipc)            \
   V(electron_renderer_web_frame)
 
-#define ELECTRON_UTILITY_BINDINGS(V) \
-  V(electron_browser_event_emitter)  \
-  V(electron_common_net)             \
+#define ELECTRON_UTILITY_BINDINGS(V)     \
+  V(electron_browser_event_emitter)      \
+  V(electron_browser_system_preferences) \
+  V(electron_common_net)                 \
   V(electron_utility_parent_port)
 
 #define ELECTRON_TESTING_BINDINGS(V) V(electron_common_testing)
@@ -255,7 +258,6 @@ v8::ModifyCodeGenerationFromStringsResult ModifyCodeGenerationFromStrings(
     // enabled.
     if (!electron::IsRendererProcess()) {
       NOTREACHED();
-      return {false, {}};
     }
     return blink::V8Initializer::CodeGenerationCheckCallbackInMainThread(
         context, source, is_code_like);
@@ -285,7 +287,7 @@ void ErrorMessageListener(v8::Local<v8::Message> message,
   node::Environment* env = node::Environment::GetCurrent(isolate);
   if (env) {
     gin_helper::MicrotasksScope microtasks_scope(
-        isolate, env->context()->GetMicrotaskQueue(),
+        isolate, env->context()->GetMicrotaskQueue(), false,
         v8::MicrotasksScope::kDoNotRunMicrotasks);
     // Emit the after() hooks now that the exception has been handled.
     // Analogous to node/lib/internal/process/execution.js#L176-L180
@@ -438,6 +440,20 @@ NodeBindings::~NodeBindings() {
     stop_and_close_uv_loop(uv_loop_);
 }
 
+node::IsolateData* NodeBindings::isolate_data(
+    v8::Local<v8::Context> context) const {
+  if (context->GetNumberOfEmbedderDataFields() <=
+      kElectronContextEmbedderDataIndex) {
+    return nullptr;
+  }
+  auto* isolate_data = static_cast<node::IsolateData*>(
+      context->GetAlignedPointerFromEmbedderData(
+          kElectronContextEmbedderDataIndex));
+  CHECK(isolate_data);
+  CHECK(isolate_data->event_loop());
+  return isolate_data;
+}
+
 // static
 uv_loop_t* NodeBindings::InitEventLoop(BrowserEnvironment browser_env,
                                        uv_loop_t* worker_loop) {
@@ -530,10 +546,15 @@ void NodeBindings::Initialize(v8::Local<v8::Context> context) {
 
   // Parse and set Node.js cli flags.
   std::vector<std::string> args = ParseNodeCliFlags();
+
+  // V8::EnableWebAssemblyTrapHandler can be called only once or it will
+  // hard crash. We need to prevent Node.js calling it in the event it has
+  // already been called.
+  node::per_process::cli_options->disable_wasm_trap_handler = true;
+
   uint64_t process_flags =
       node::ProcessInitializationFlags::kNoInitializeV8 |
-      node::ProcessInitializationFlags::kNoInitializeNodeV8Platform |
-      node::ProcessInitializationFlags::kNoEnableWasmTrapHandler;
+      node::ProcessInitializationFlags::kNoInitializeNodeV8Platform;
 
   // We do not want the child processes spawned from the utility process
   // to inherit the custom stdio handles created for the parent.
@@ -573,7 +594,7 @@ void NodeBindings::Initialize(v8::Local<v8::Context> context) {
 }
 
 std::shared_ptr<node::Environment> NodeBindings::CreateEnvironment(
-    v8::Handle<v8::Context> context,
+    v8::Local<v8::Context> context,
     node::MultiIsolatePlatform* platform,
     std::vector<std::string> args,
     std::vector<std::string> exec_args,
@@ -775,18 +796,11 @@ std::shared_ptr<node::Environment> NodeBindings::CreateEnvironment(
 }
 
 std::shared_ptr<node::Environment> NodeBindings::CreateEnvironment(
-    v8::Handle<v8::Context> context,
+    v8::Local<v8::Context> context,
     node::MultiIsolatePlatform* platform,
     std::optional<base::RepeatingCallback<void()>> on_app_code_ready) {
-#if BUILDFLAG(IS_WIN)
-  auto& electron_args = ElectronCommandLine::argv();
-  std::vector<std::string> args(electron_args.size());
-  std::transform(electron_args.cbegin(), electron_args.cend(), args.begin(),
-                 [](auto& a) { return base::WideToUTF8(a); });
-#else
-  auto args = ElectronCommandLine::argv();
-#endif
-  return CreateEnvironment(context, platform, args, {}, on_app_code_ready);
+  return CreateEnvironment(context, platform, ElectronCommandLine::AsUtf8(), {},
+                           on_app_code_ready);
 }
 
 void NodeBindings::LoadEnvironment(node::Environment* env) {

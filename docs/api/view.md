@@ -48,9 +48,14 @@ Objects created with `new View` have the following instance methods:
 * `index` Integer (optional) - Index at which to insert the child view.
   Defaults to adding the child at the end of the child list.
 
+If the same View is added to a parent which already contains it, it will be reordered such that
+it becomes the topmost view.
+
 #### `view.removeChildView(view)`
 
 * `view` View - Child view to remove.
+
+If the view passed as a parameter is not a child of this view, this method is a no-op.
 
 #### `view.setBounds(bounds)`
 
@@ -90,6 +95,12 @@ Examples of valid `color` values:
     * e.g. `blueviolet` or `red`
 
 **Note:** Hex format with alpha takes `AARRGGBB` or `ARGB`, _not_ `RRGGBBAA` or `RGB`.
+
+#### `view.setBorderRadius(radius)`
+
+* `radius` Integer - Border radius size in pixels.
+
+**Note:** The area cutout of the view's border still captures clicks.
 
 #### `view.setVisible(visible)`
 

@@ -4,8 +4,10 @@
 
 #include "shell/browser/extensions/api/tabs/tabs_api.h"
 
-#include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/command_line.h"
 #include "base/strings/pattern.h"
@@ -197,6 +199,10 @@ bool ExecuteCodeInTabFunction::IsWebView() const {
   return false;
 }
 
+int ExecuteCodeInTabFunction::GetRootFrameId() const {
+  return ExtensionApiFrameIdMap::kTopFrameId;
+}
+
 const GURL& ExecuteCodeInTabFunction::GetWebViewSrc() const {
   return GURL::EmptyGURL();
 }
@@ -344,6 +350,7 @@ ExtensionFunction::ResponseAction TabsGetFunction::Run() {
   }
 
   tab.active = contents->IsFocused();
+  tab.last_accessed = wc->GetLastActiveTime().InMillisecondsFSinceUnixEpoch();
 
   return RespondNow(ArgumentList(tabs::Get::Results::Create(std::move(tab))));
 }
@@ -365,11 +372,10 @@ ExtensionFunction::ResponseAction TabsSetZoomFunction::Run() {
     return RespondNow(Error(error));
 
   auto* zoom_controller = contents->GetZoomController();
-  double zoom_level =
-      params->zoom_factor > 0
-          ? blink::PageZoomFactorToZoomLevel(params->zoom_factor)
-          : blink::PageZoomFactorToZoomLevel(
-                zoom_controller->default_zoom_factor());
+  double zoom_level = params->zoom_factor > 0
+                          ? blink::ZoomFactorToZoomLevel(params->zoom_factor)
+                          : blink::ZoomFactorToZoomLevel(
+                                zoom_controller->default_zoom_factor());
 
   zoom_controller->SetZoomLevel(zoom_level);
 
@@ -387,7 +393,7 @@ ExtensionFunction::ResponseAction TabsGetZoomFunction::Run() {
     return RespondNow(Error("No such tab"));
 
   double zoom_level = contents->GetZoomController()->GetZoomLevel();
-  double zoom_factor = blink::PageZoomLevelToZoomFactor(zoom_level);
+  double zoom_factor = blink::ZoomLevelToZoomFactor(zoom_level);
 
   return RespondNow(ArgumentList(tabs::GetZoom::Results::Create(zoom_factor)));
 }
@@ -408,7 +414,7 @@ ExtensionFunction::ResponseAction TabsGetZoomSettingsFunction::Run() {
   tabs::ZoomSettings zoom_settings;
   ZoomModeToZoomSettings(zoom_mode, &zoom_settings);
   zoom_settings.default_zoom_factor =
-      blink::PageZoomLevelToZoomFactor(zoom_controller->GetDefaultZoomLevel());
+      blink::ZoomLevelToZoomFactor(zoom_controller->GetDefaultZoomLevel());
 
   return RespondNow(
       ArgumentList(tabs::GetZoomSettings::Results::Create(zoom_settings)));
@@ -465,6 +471,8 @@ ExtensionFunction::ResponseAction TabsSetZoomSettingsFunction::Run() {
 
   return RespondNow(NoArguments());
 }
+
+namespace {
 
 bool IsKillURL(const GURL& url) {
 #if DCHECK_IS_ON()
@@ -574,9 +582,7 @@ base::expected<GURL, std::string> PrepareURLForNavigation(
   // Don't let the extension navigate directly to file scheme pages, unless
   // they have file access.
   if (url.SchemeIsFile() &&
-      !AllowFileAccess(extension->id(), browser_context) &&
-      base::FeatureList::IsEnabled(
-          extensions_features::kRestrictFileURLNavigation)) {
+      !AllowFileAccess(extension->id(), browser_context)) {
     const char kFileUrlsNotAllowedInExtensionNavigations[] =
         "Cannot navigate to a file URL without local file access.";
     return base::unexpected(kFileUrlsNotAllowedInExtensionNavigations);
@@ -584,6 +590,8 @@ base::expected<GURL, std::string> PrepareURLForNavigation(
 
   return url;
 }
+
+}  // namespace
 
 TabsUpdateFunction::TabsUpdateFunction() : web_contents_(nullptr) {}
 

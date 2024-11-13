@@ -7,7 +7,6 @@
 #include "base/containers/contains.h"
 #include "base/containers/flat_map.h"
 #include "base/functional/bind.h"
-#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/no_destructor.h"
@@ -47,7 +46,7 @@ base::flat_map<int, GtkWidget*>& GetDialogsMap() {
   return *dialogs;
 }
 
-class GtkMessageBox : public NativeWindowObserver {
+class GtkMessageBox : private NativeWindowObserver {
  public:
   explicit GtkMessageBox(const MessageBoxSettings& settings)
       : id_(settings.id),
@@ -182,6 +181,7 @@ class GtkMessageBox : public NativeWindowObserver {
     Show();
   }
 
+  // NativeWindowObserver
   void OnWindowClosed() override {
     parent_->RemoveObserver(this);
     parent_ = nullptr;

@@ -86,11 +86,11 @@ index e4a27a24c83dd1a478b2ada8b6c8220076790791..c76dc818f38a62fff63852dbecbc85e3
  
    // Cut the reference from ScriptState to V8 context.
 diff --git a/third_party/blink/renderer/platform/bindings/script_state.h b/third_party/blink/renderer/platform/bindings/script_state.h
-index 5dcd3515a6685d31cf5ecd89b37d7b850caf887e..1148f2012c4f93a4a4b41a7ef597fdbe09fc7a16 100644
+index b3cc8d819b06108386aed9465cab4f27a28b675f..a1757901e52360a9c2ec3c573adb20d03cd6ecae 100644
 --- a/third_party/blink/renderer/platform/bindings/script_state.h
 +++ b/third_party/blink/renderer/platform/bindings/script_state.h
-@@ -180,7 +180,12 @@ class PLATFORM_EXPORT ScriptState : public GarbageCollected<ScriptState> {
-   static ScriptState* MaybeFrom(v8::Local<v8::Context> context) {
+@@ -185,7 +185,12 @@ class PLATFORM_EXPORT ScriptState : public GarbageCollected<ScriptState> {
+                                 v8::Local<v8::Context> context) {
      DCHECK(!context.IsEmpty());
      if (context->GetNumberOfEmbedderDataFields() <=
 -        kV8ContextPerContextDataIndex) {
@@ -103,7 +103,7 @@ index 5dcd3515a6685d31cf5ecd89b37d7b850caf887e..1148f2012c4f93a4a4b41a7ef597fdbe
        return nullptr;
      }
      ScriptState* script_state =
-@@ -247,9 +252,15 @@ class PLATFORM_EXPORT ScriptState : public GarbageCollected<ScriptState> {
+@@ -263,6 +268,8 @@ class PLATFORM_EXPORT ScriptState : public GarbageCollected<ScriptState> {
    static void SetCreateCallback(CreateCallback);
    friend class ScriptStateImpl;
  
@@ -112,6 +112,11 @@ index 5dcd3515a6685d31cf5ecd89b37d7b850caf887e..1148f2012c4f93a4a4b41a7ef597fdbe
    static constexpr int kV8ContextPerContextDataIndex =
        static_cast<int>(gin::kPerContextDataStartIndex) +
        static_cast<int>(gin::kEmbedderBlink);
+@@ -271,6 +278,11 @@ class PLATFORM_EXPORT ScriptState : public GarbageCollected<ScriptState> {
+   // internals.idl.
+   String last_compiled_script_file_name_;
+   bool last_compiled_script_used_code_cache_ = false;
++
 +  static constexpr int kV8ContextPerContextDataTagIndex =
 +      static_cast<int>(gin::kPerContextDataStartIndex) +
 +      static_cast<int>(gin::kEmbedderBlink) +

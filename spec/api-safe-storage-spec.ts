@@ -1,10 +1,13 @@
-import * as cp from 'node:child_process';
-import * as path from 'node:path';
 import { safeStorage } from 'electron/main';
+
 import { expect } from 'chai';
-import { ifdescribe } from './lib/spec-helpers';
-import * as fs from 'fs-extra';
+
+import * as cp from 'node:child_process';
 import { once } from 'node:events';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+import { ifdescribe } from './lib/spec-helpers';
 
 describe('safeStorage module', () => {
   it('safeStorage before and after app is ready', async () => {
@@ -33,8 +36,8 @@ describe('safeStorage module', () => {
 
   after(async () => {
     const pathToEncryptedString = path.resolve(__dirname, 'fixtures', 'api', 'safe-storage', 'encrypted.txt');
-    if (await fs.pathExists(pathToEncryptedString)) {
-      await fs.remove(pathToEncryptedString);
+    if (fs.existsSync(pathToEncryptedString)) {
+      await fs.promises.rm(pathToEncryptedString, { force: true, recursive: true });
     }
   });
 

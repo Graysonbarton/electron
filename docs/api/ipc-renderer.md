@@ -7,6 +7,15 @@ hide_title: false
 
 # ipcRenderer
 
+<!--
+```YAML history
+changes:
+  - pr-url: https://github.com/electron/electron/pull/40330
+    description: "`ipcRenderer` can no longer be sent over the `contextBridge`"
+    breaking-changes-header: behavior-changed-ipcrenderer-can-no-longer-be-sent-over-the-contextbridge
+```
+-->
+
 > Communicate asynchronously from a renderer process to the main process.
 
 Process: [Renderer](../glossary.md#renderer-process)
@@ -82,8 +91,8 @@ Removes all listeners, or those of the specified `channel`.
 * `...args` any[]
 
 Send an asynchronous message to the main process via `channel`, along with
-arguments. Arguments will be serialized with the [Structured Clone
-Algorithm][SCA], just like [`window.postMessage`][], so prototype chains will not be
+arguments. Arguments will be serialized with the [Structured Clone Algorithm][SCA],
+just like [`window.postMessage`][], so prototype chains will not be
 included. Sending Functions, Promises, Symbols, WeakMaps, or WeakSets will
 throw an exception.
 
@@ -110,8 +119,8 @@ If you want to receive a single response from the main process, like the result 
 Returns `Promise<any>` - Resolves with the response from the main process.
 
 Send a message to the main process via `channel` and expect a result
-asynchronously. Arguments will be serialized with the [Structured Clone
-Algorithm][SCA], just like [`window.postMessage`][], so prototype chains will not be
+asynchronously. Arguments will be serialized with the [Structured Clone Algorithm][SCA],
+just like [`window.postMessage`][], so prototype chains will not be
 included. Sending Functions, Promises, Symbols, WeakMaps, or WeakSets will
 throw an exception.
 
@@ -160,8 +169,8 @@ If you do not need a response to the message, consider using [`ipcRenderer.send`
 Returns `any` - The value sent back by the [`ipcMain`](./ipc-main.md) handler.
 
 Send a message to the main process via `channel` and expect a result
-synchronously. Arguments will be serialized with the [Structured Clone
-Algorithm][SCA], just like [`window.postMessage`][], so prototype chains will not be
+synchronously. Arguments will be serialized with the [Structured Clone Algorithm][SCA],
+just like [`window.postMessage`][], so prototype chains will not be
 included. Sending Functions, Promises, Symbols, WeakMaps, or WeakSets will
 throw an exception.
 
@@ -208,8 +217,8 @@ ipcMain.on('port', (e, msg) => {
 })
 ```
 
-For more information on using `MessagePort` and `MessageChannel`, see the [MDN
-documentation](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel).
+For more information on using `MessagePort` and `MessageChannel`, see the
+[MDN documentation](https://developer.mozilla.org/en-US/docs/Web/API/MessageChannel).
 
 ### `ipcRenderer.sendToHost(channel, ...args)`
 

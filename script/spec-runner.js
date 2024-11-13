@@ -1,19 +1,23 @@
 #!/usr/bin/env node
 
 const { ElectronVersions, Installer } = require('@electron/fiddle-core');
+
+const chalk = require('chalk');
+const { hashElement } = require('folder-hash');
+const minimist = require('minimist');
+
 const childProcess = require('node:child_process');
 const crypto = require('node:crypto');
-const fs = require('fs-extra');
-const { hashElement } = require('folder-hash');
+const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+
 const unknownFlags = [];
 
-require('colors');
-const pass = '✓'.green;
-const fail = '✗'.red;
+const pass = chalk.green('✓');
+const fail = chalk.red('✗');
 
-const args = require('minimist')(process.argv, {
+const args = minimist(process.argv, {
   string: ['runners', 'target', 'electronVersion'],
   unknown: arg => unknownFlags.push(arg)
 });
@@ -186,14 +190,10 @@ async function runMainProcessElectronTests () {
 }
 
 async function installSpecModules (dir) {
-  // v8 headers use c++17 so override the gyp default of -std=c++14,
-  // but don't clobber any other CXXFLAGS that were passed into spec-runner.js
-  const CXXFLAGS = ['-std=c++17', process.env.CXXFLAGS].filter(x => !!x).join(' ');
-
   const env = {
     ...process.env,
-    CXXFLAGS,
-    npm_config_msvs_version: '2019',
+    CXXFLAGS: process.env.CXXFLAGS,
+    npm_config_msvs_version: '2022',
     npm_config_yes: 'true'
   };
   if (args.electronVersion) {
@@ -216,7 +216,7 @@ async function installSpecModules (dir) {
     env.npm_config_nodedir = path.resolve(BASE, `out/${utils.getOutDir({ shouldLog: true })}/gen/node_headers`);
   }
   if (fs.existsSync(path.resolve(dir, 'node_modules'))) {
-    await fs.remove(path.resolve(dir, 'node_modules'));
+    await fs.promises.rm(path.resolve(dir, 'node_modules'), { force: true, recursive: true });
   }
   const { status } = childProcess.spawnSync(NPX_CMD, [`yarn@${YARN_VERSION}`, 'install', '--frozen-lockfile'], {
     env,

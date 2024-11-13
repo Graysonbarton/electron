@@ -4,7 +4,6 @@
 
 #include <string>
 
-#include "base/values.h"
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_frame_observer.h"
 #include "gin/dictionary.h"
@@ -20,7 +19,7 @@
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/node_bindings.h"
 #include "shell/common/node_includes.h"
-#include "shell/common/v8_value_serializer.h"
+#include "shell/common/v8_util.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_message_port_converter.h"
@@ -41,8 +40,8 @@ RenderFrame* GetCurrentRenderFrame() {
   return RenderFrame::FromWebFrame(frame);
 }
 
-class IPCRenderer : public gin::Wrappable<IPCRenderer>,
-                    public content::RenderFrameObserver {
+class IPCRenderer final : public gin::Wrappable<IPCRenderer>,
+                          private content::RenderFrameObserver {
  public:
   static gin::WrapperInfo kWrapperInfo;
 

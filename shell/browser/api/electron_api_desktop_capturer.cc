@@ -9,7 +9,6 @@
 #include <vector>
 
 #include "base/containers/flat_map.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/thread_restrictions.h"
 #include "chrome/browser/media/webrtc/desktop_capturer_wrapper.h"
@@ -17,6 +16,7 @@
 #include "chrome/browser/media/webrtc/thumbnail_capturer_mac.h"
 #include "chrome/browser/media/webrtc/window_icon_util.h"
 #include "content/public/browser/desktop_capture.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "shell/browser/javascript_environment.h"
 #include "shell/common/api/electron_api_native_image.h"
@@ -41,6 +41,12 @@
 #include "ui/gfx/x/randr.h"
 #endif
 
+#if BUILDFLAG(IS_MAC)
+#include "base/strings/string_number_conversions.h"
+#include "ui/base/cocoa/permissions_utils.h"
+#endif
+
+namespace {
 #if BUILDFLAG(IS_LINUX)
 // Private function in ui/base/x/x11_display_util.cc
 base::flat_map<x11::RandR::Output, int> GetMonitors(
@@ -137,8 +143,6 @@ base::flat_map<int32_t, uint32_t> MonitorAtomIdToDisplayId() {
 }
 #endif
 
-namespace {
-
 std::unique_ptr<ThumbnailCapturer> MakeWindowCapturer() {
 #if BUILDFLAG(IS_MAC)
   if (ShouldUseThumbnailCapturerMac(DesktopMediaList::Type::kWindow)) {
@@ -166,6 +170,16 @@ std::unique_ptr<ThumbnailCapturer> MakeScreenCapturer() {
                                std::move(screen_capturer))
                          : nullptr;
 }
+
+#if BUILDFLAG(IS_WIN)
+BOOL CALLBACK EnumDisplayMonitorsCallback(HMONITOR monitor,
+                                          HDC hdc,
+                                          LPRECT rect,
+                                          LPARAM data) {
+  reinterpret_cast<std::vector<HMONITOR>*>(data)->push_back(monitor);
+  return TRUE;
+}
+#endif
 
 }  // namespace
 
@@ -294,6 +308,13 @@ void DesktopCapturer::StartHandling(bool capture_window,
   capture_window_ = capture_window;
   capture_screen_ = capture_screen;
 
+#if BUILDFLAG(IS_MAC)
+  if (!ui::TryPromptUserForScreenCapture()) {
+    HandleFailure();
+    return;
+  }
+#endif
+
   {
     // Initialize the source list.
     // Apply the new thumbnail size and restart capture.
@@ -389,18 +410,38 @@ void DesktopCapturer::UpdateSourcesList(DesktopMediaList* list) {
     if (using_directx_capturer_) {
       std::vector<std::string> device_names;
       // Crucially, this list of device names will be in the same order as
-      // |media_list_sources|.
+      // |screen_sources|.
       if (!webrtc::DxgiDuplicatorController::Instance()->GetDeviceNames(
               &device_names)) {
         HandleFailure();
         return;
       }
+      DCHECK_EQ(device_names.size(), screen_sources.size());
+
+      std::vector<HMONITOR> monitors;
+      EnumDisplayMonitors(nullptr, nullptr, EnumDisplayMonitorsCallback,
+                          reinterpret_cast<LPARAM>(&monitors));
+
+      base::flat_map<std::string, int64_t> device_name_to_id;
+      device_name_to_id.reserve(monitors.size());
+      for (auto* monitor : monitors) {
+        MONITORINFOEX monitorInfo{{sizeof(MONITORINFOEX)}};
+        if (!GetMonitorInfo(monitor, &monitorInfo)) {
+          continue;
+        }
+
+        device_name_to_id[base::WideToUTF8(monitorInfo.szDevice)] =
+            display::win::internal::DisplayInfo::DisplayIdFromMonitorInfo(
+                monitorInfo);
+      }
 
       int device_name_index = 0;
       for (auto& source : screen_sources) {
         const auto& device_name = device_names[device_name_index++];
-        const int64_t device_id = base::PersistentHash(device_name);
-        source.display_id = base::NumberToString(device_id);
+        if (auto id_iter = device_name_to_id.find(device_name);
+            id_iter != device_name_to_id.end()) {
+          source.display_id = base::NumberToString(id_iter->second);
+        }
       }
     }
 #elif BUILDFLAG(IS_MAC)
@@ -425,21 +466,25 @@ void DesktopCapturer::UpdateSourcesList(DesktopMediaList* list) {
               std::back_inserter(captured_sources_));
   }
 
-  if (!capture_window_ && !capture_screen_) {
-    v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
-    v8::HandleScope scope(isolate);
-    gin_helper::CallMethod(this, "_onfinished", captured_sources_);
+  if (!capture_window_ && !capture_screen_)
+    HandleSuccess();
+}
 
-    screen_capturer_.reset();
-    window_capturer_.reset();
+void DesktopCapturer::HandleSuccess() {
+  v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
+  v8::HandleScope scope(isolate);
+  gin_helper::CallMethod(this, "_onfinished", captured_sources_);
 
-    Unpin();
-  }
+  screen_capturer_.reset();
+  window_capturer_.reset();
+
+  Unpin();
 }
 
 void DesktopCapturer::HandleFailure() {
   v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
   v8::HandleScope scope(isolate);
+
   gin_helper::CallMethod(this, "_onerror", "Failed to get sources.");
 
   screen_capturer_.reset();
@@ -457,6 +502,13 @@ gin::Handle<DesktopCapturer> DesktopCapturer::Create(v8::Isolate* isolate) {
 
   return handle;
 }
+
+// static
+#if !BUILDFLAG(IS_MAC)
+bool DesktopCapturer::IsDisplayMediaSystemPickerAvailable() {
+  return false;
+}
+#endif
 
 gin::ObjectTemplateBuilder DesktopCapturer::GetObjectTemplateBuilder(
     v8::Isolate* isolate) {
@@ -479,6 +531,9 @@ void Initialize(v8::Local<v8::Object> exports,
   gin_helper::Dictionary dict(context->GetIsolate(), exports);
   dict.SetMethod("createDesktopCapturer",
                  &electron::api::DesktopCapturer::Create);
+  dict.SetMethod(
+      "isDisplayMediaSystemPickerAvailable",
+      &electron::api::DesktopCapturer::IsDisplayMediaSystemPickerAvailable);
 }
 
 }  // namespace

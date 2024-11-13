@@ -15,7 +15,7 @@ to recognize asar files.
 This reverts commit 9cf2e1f55b8446a7cde23699d00a3be73aa0c8f1.
 
 diff --git a/lib/internal/modules/esm/resolve.js b/lib/internal/modules/esm/resolve.js
-index 30f6abd5d2d3fb7aceaa6191ebd99642e34d9ee4..cd5f59a5c27afd74f68c920a6ab5b8bc7992458c 100644
+index 69f73f829706deddc4f328b78af9d58434af647d..1d53a2a47423150e822bb917b2725d3a6a794814 100644
 --- a/lib/internal/modules/esm/resolve.js
 +++ b/lib/internal/modules/esm/resolve.js
 @@ -36,10 +36,9 @@ const preserveSymlinksMain = getOptionValue('--preserve-symlinks-main');
@@ -142,7 +142,7 @@ index 30f6abd5d2d3fb7aceaa6191ebd99642e34d9ee4..cd5f59a5c27afd74f68c920a6ab5b8bc
  
  const encodedSepRegEx = /%2F|%5C/i;
 diff --git a/src/node_file.cc b/src/node_file.cc
-index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf5cf25108 100644
+index 73ad5a1a2c092d7f8dac84585fb9b13e76e84e13..039f693de14bec248f93262ad70f2736c24827e3 100644
 --- a/src/node_file.cc
 +++ b/src/node_file.cc
 @@ -19,14 +19,11 @@
@@ -160,7 +160,7 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
  #include "node_process-inl.h"
  #include "node_stat_watcher.h"
  #include "node_url.h"
-@@ -2979,134 +2976,6 @@ constexpr std::array<std::string_view, 10> legacy_main_extensions = {
+@@ -3127,135 +3124,6 @@ constexpr std::array<std::string_view, 10> legacy_main_extensions = {
  
  }  // namespace
  
@@ -179,6 +179,8 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
 -    THROW_ERR_INVALID_URL(isolate, "Invalid URL");
 -    return;
 -  }
+-
+-  std::string package_initial_file = "";
 -
 -  ada::result<ada::url_aggregator> file_path_url;
 -  std::optional<std::string> initial_file_path;
@@ -201,6 +203,8 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
 -    }
 -
 -    node::url::FromNamespacedPath(&initial_file_path.value());
+-
+-    package_initial_file = *initial_file_path;
 -
 -    for (int i = 0; i < legacy_main_extensions_with_main_end; i++) {
 -      file_path = *initial_file_path + std::string(legacy_main_extensions[i]);
@@ -257,13 +261,10 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
 -    }
 -  }
 -
--  std::optional<std::string> module_path =
--      node::url::FileURLToPath(env, *package_json_url);
--  std::optional<std::string> module_base;
+-  if (package_initial_file == "")
+-    package_initial_file = *initial_file_path + ".js";
 -
--  if (!module_path.has_value()) {
--    return;
--  }
+-  std::optional<std::string> module_base;
 -
 -  if (args.Length() >= 3 && args[2]->IsString()) {
 -    Utf8Value utf8_base_path(isolate, args[2]);
@@ -288,14 +289,14 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
 -
 -  THROW_ERR_MODULE_NOT_FOUND(isolate,
 -                             "Cannot find package '%s' imported from %s",
--                             *module_path,
+-                             package_initial_file,
 -                             *module_base);
 -}
 -
  void BindingData::MemoryInfo(MemoryTracker* tracker) const {
    tracker->TrackField("stats_field_array", stats_field_array);
    tracker->TrackField("stats_field_bigint_array", stats_field_bigint_array);
-@@ -3206,19 +3075,6 @@ InternalFieldInfoBase* BindingData::Serialize(int index) {
+@@ -3355,19 +3223,6 @@ InternalFieldInfoBase* BindingData::Serialize(int index) {
    return info;
  }
  
@@ -315,7 +316,7 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
  static void CreatePerIsolateProperties(IsolateData* isolate_data,
                                         Local<ObjectTemplate> target) {
    Isolate* isolate = isolate_data->isolate();
-@@ -3273,7 +3129,6 @@ static void CreatePerIsolateProperties(IsolateData* isolate_data,
+@@ -3422,7 +3277,6 @@ static void CreatePerIsolateProperties(IsolateData* isolate_data,
    SetMethod(isolate, target, "mkdtemp", Mkdtemp);
  
    StatWatcher::CreatePerIsolateProperties(isolate_data, target);
@@ -323,7 +324,7 @@ index 1a14b30e00778b6bdb8b75a380e92b7140b18595..9e4be8909311634c49ffac7cc6d32ecf
  
    target->Set(
        FIXED_ONE_BYTE_STRING(isolate, "kFsStatsFieldsNumber"),
-@@ -3346,7 +3201,6 @@ BindingData* FSReqBase::binding_data() {
+@@ -3495,7 +3349,6 @@ BindingData* FSReqBase::binding_data() {
  void RegisterExternalReferences(ExternalReferenceRegistry* registry) {
    registry->Register(Access);
    StatWatcher::RegisterExternalReferences(registry);
@@ -350,7 +351,7 @@ index 6f1b55284db0f4f8c70081b4834a074c717f3cc9..a969fff32bd156aa9393c1db9eec474e
    SET_SELF_SIZE(BindingData)
    SET_MEMORY_INFO_NAME(BindingData)
 diff --git a/test/es-module/test-cjs-legacyMainResolve.js b/test/es-module/test-cjs-legacyMainResolve.js
-index 1dc7d8faafe6eb5cea7e43e9783041f2a994be0d..d86d501689b2b72f2b964d6e2a91c5d36b6b62f5 100644
+index 0bfeb567a22b1f9d9116b749d6cb3a8fda6bcc6a..17f137c595a9fef5f051fafc4682f206034c214c 100644
 --- a/test/es-module/test-cjs-legacyMainResolve.js
 +++ b/test/es-module/test-cjs-legacyMainResolve.js
 @@ -82,7 +82,7 @@ describe('legacyMainResolve', () => {
@@ -366,7 +367,7 @@ index 1dc7d8faafe6eb5cea7e43e9783041f2a994be0d..d86d501689b2b72f2b964d6e2a91c5d3
      );
      assert.throws(
        () => legacyMainResolve(packageJsonUrl, { main: null }, packageJsonUrl),
--      { code: 'ERR_MODULE_NOT_FOUND' },
+-      { message: /index\.js/, code: 'ERR_MODULE_NOT_FOUND' },
 +      { code: 'ERR_INTERNAL_ASSERTION' },
      );
    });
@@ -375,12 +376,21 @@ index 1dc7d8faafe6eb5cea7e43e9783041f2a994be0d..d86d501689b2b72f2b964d6e2a91c5d3
      const packageJsonUrl = pathToFileURL('/c/file%20with%20percents/package.json');
      assert.throws(
        () => legacyMainResolve(packageJsonUrl, { main: null }, packageJsonUrl),
--      { code: 'ERR_MODULE_NOT_FOUND' },
+-      { message: /index\.js/, code: 'ERR_MODULE_NOT_FOUND' },
 +      { code: 'ERR_INTERNAL_ASSERTION' },
      );
    });
  
 @@ -150,7 +150,7 @@ describe('legacyMainResolve', () => {
+     );
+     assert.throws(
+       () => legacyMainResolve(packageJsonUrl, { main: './index.node' }, packageJsonUrl),
+-      { message: /index\.node/, code: 'ERR_MODULE_NOT_FOUND' },
++      { code: 'ERR_INTERNAL_ASSERTION' },
+     );
+   });
+ 
+@@ -163,7 +163,7 @@ describe('legacyMainResolve', () => {
      );
      assert.throws(
        () => legacyMainResolve(packageJsonUrl, { main: null }, undefined),

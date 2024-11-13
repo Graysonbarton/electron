@@ -7,10 +7,9 @@
 #include <vector>
 
 #include "base/containers/contains.h"
-#include "base/stl_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "extensions/common/command.h"
 #include "gin/dictionary.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "shell/browser/api/electron_api_system_preferences.h"
 #include "shell/browser/browser.h"
@@ -35,11 +34,9 @@ bool RegisteringMediaKeyForUntrustedClient(const ui::Accelerator& accelerator) {
 
 bool MapHasMediaKeys(
     const std::map<ui::Accelerator, base::RepeatingClosure>& accelerator_map) {
-  auto media_key = std::find_if(
-      accelerator_map.begin(), accelerator_map.end(),
-      [](const auto& ac) { return Command::IsMediaKey(ac.first); });
-
-  return media_key != accelerator_map.end();
+  return std::ranges::any_of(accelerator_map, [](const auto& ac) {
+    return Command::IsMediaKey(ac.first);
+  });
 }
 #endif
 
@@ -60,7 +57,6 @@ void GlobalShortcut::OnKeyPressed(const ui::Accelerator& accelerator) {
     // This should never occur, because if it does, GlobalShortcutListener
     // notifies us with wrong accelerator.
     NOTREACHED();
-    return;
   }
   accelerator_callback_map_[accelerator].Run();
 }

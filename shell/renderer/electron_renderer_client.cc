@@ -4,11 +4,12 @@
 
 #include "shell/renderer/electron_renderer_client.h"
 
+#include <algorithm>
+
 #include "base/command_line.h"
 #include "base/containers/contains.h"
 #include "base/debug/stack_trace.h"
 #include "content/public/renderer/render_frame.h"
-#include "electron/buildflags/buildflags.h"
 #include "net/http/http_request_headers.h"
 #include "shell/common/api/electron_bindings.h"
 #include "shell/common/gin_helper/dictionary.h"
@@ -72,7 +73,7 @@ void ElectronRendererClient::UndeferLoad(content::RenderFrame* render_frame) {
 }
 
 void ElectronRendererClient::DidCreateScriptContext(
-    v8::Handle<v8::Context> renderer_context,
+    v8::Local<v8::Context> renderer_context,
     content::RenderFrame* render_frame) {
   // TODO(zcbenz): Do not create Node environment if node integration is not
   // enabled.
@@ -110,19 +111,25 @@ void ElectronRendererClient::DidCreateScriptContext(
       base::BindRepeating(&ElectronRendererClient::UndeferLoad,
                           base::Unretained(this), render_frame));
 
-  v8::Local<v8::Object> global = renderer_context->Global();
-  v8::MaybeLocal<v8::Value> fetch =
-      global->Get(renderer_context, gin::StringToV8(env->isolate(), "fetch"));
-
   // We need to use the Blink implementation of fetch in the renderer process
   // Node.js deletes the global fetch function when their fetch implementation
   // is disabled, so we need to save and re-add it after the Node.js environment
   // is loaded. See corresponding change in node/init.ts.
-  if (!fetch.IsEmpty()) {
-    global
-        ->Set(renderer_context, gin::StringToV8(env->isolate(), "blinkFetch"),
-              fetch.ToLocalChecked())
-        .Check();
+  v8::Isolate* isolate = env->isolate();
+  v8::Local<v8::Object> global = renderer_context->Global();
+
+  std::vector<std::string> keys = {"fetch",   "Response", "FormData",
+                                   "Request", "Headers",  "EventSource"};
+  for (const auto& key : keys) {
+    v8::MaybeLocal<v8::Value> value =
+        global->Get(renderer_context, gin::StringToV8(isolate, key));
+    if (!value.IsEmpty()) {
+      std::string blink_key = "blink" + key;
+      global
+          ->Set(renderer_context, gin::StringToV8(isolate, blink_key),
+                value.ToLocalChecked())
+          .Check();
+    }
   }
 
   // If we have disabled the site instance overrides we should prevent loading
@@ -152,13 +159,13 @@ void ElectronRendererClient::DidCreateScriptContext(
 }
 
 void ElectronRendererClient::WillReleaseScriptContext(
-    v8::Handle<v8::Context> context,
+    v8::Local<v8::Context> context,
     content::RenderFrame* render_frame) {
   if (injected_frames_.erase(render_frame) == 0)
     return;
 
   node::Environment* env = node::Environment::GetCurrent(context);
-  const auto iter = base::ranges::find_if(
+  const auto iter = std::ranges::find_if(
       environments_, [env](auto& item) { return env == item.get(); });
   if (iter == environments_.end())
     return;

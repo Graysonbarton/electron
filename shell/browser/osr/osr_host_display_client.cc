@@ -12,7 +12,6 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "third_party/skia/include/core/SkRect.h"
 #include "third_party/skia/src/core/SkDevice.h"
-#include "ui/gfx/skia_util.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "skia/ext/skia_utils_win.h"
@@ -70,7 +69,7 @@ void LayeredWindowUpdater::Draw(const gfx::Rect& damage_rect,
 
   if (active_ && canvas_->peekPixels(&pixmap)) {
     bitmap.installPixels(pixmap);
-    callback_.Run(damage_rect, bitmap);
+    callback_.Run(damage_rect, bitmap, {});
   }
 
   std::move(draw_callback).Run();

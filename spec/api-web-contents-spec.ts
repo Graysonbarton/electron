@@ -1,17 +1,21 @@
+import { BrowserWindow, ipcMain, webContents, session, app, BrowserView, WebContents } from 'electron/main';
+
 import { expect } from 'chai';
-import { AddressInfo } from 'node:net';
-import * as path from 'node:path';
+
+import * as cp from 'node:child_process';
+import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
-import { BrowserWindow, ipcMain, webContents, session, app, BrowserView, WebContents } from 'electron/main';
-import { closeAllWindows } from './lib/window-helpers';
-import { ifdescribe, defer, waitUntil, listen, ifit } from './lib/spec-helpers';
-import { once } from 'node:events';
+import { AddressInfo } from 'node:net';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import { setTimeout } from 'node:timers/promises';
+import * as url from 'node:url';
 
-const pdfjs = require('pdfjs-dist');
+import { ifdescribe, defer, waitUntil, listen, ifit } from './lib/spec-helpers';
+import { closeAllWindows } from './lib/window-helpers';
+
 const fixturesPath = path.resolve(__dirname, 'fixtures');
-const mainFixturesPath = path.resolve(__dirname, 'fixtures');
 const features = process._linkedBinding('electron_common_features');
 
 describe('webContents module', () => {
@@ -38,6 +42,17 @@ describe('webContents module', () => {
       expect(all[0].getType()).to.equal('window');
       expect(all[all.length - 2].getType()).to.equal('webview');
       expect(all[all.length - 1].getType()).to.equal('remote');
+    });
+  });
+
+  describe('webContents properties', () => {
+    afterEach(closeAllWindows);
+
+    it('has expected additional enumerable properties', () => {
+      const w = new BrowserWindow({ show: false });
+      const properties = Object.getOwnPropertyNames(w.webContents);
+      expect(properties).to.include('ipc');
+      expect(properties).to.include('navigationHistory');
     });
   });
 
@@ -556,6 +571,117 @@ describe('webContents module', () => {
       w = new BrowserWindow({ show: false });
     });
     afterEach(closeAllWindows);
+    describe('navigationHistory.removeEntryAtIndex(index) API', () => {
+      it('should remove a navigation entry given a valid index', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+        const initialLength = w.webContents.navigationHistory.length();
+        const wasRemoved = w.webContents.navigationHistory.removeEntryAtIndex(1); // Attempt to remove the second entry
+        const newLength = w.webContents.navigationHistory.length();
+        expect(wasRemoved).to.be.true();
+        expect(newLength).to.equal(initialLength - 1);
+      });
+
+      it('should not remove the current active navigation entry', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        const activeIndex = w.webContents.navigationHistory.getActiveIndex();
+        const wasRemoved = w.webContents.navigationHistory.removeEntryAtIndex(activeIndex);
+        expect(wasRemoved).to.be.false();
+      });
+
+      it('should return false given an invalid index larger than history length', async () => {
+        await w.loadURL(urlPage1);
+        const wasRemoved = w.webContents.navigationHistory.removeEntryAtIndex(5); // Index larger than history length
+        expect(wasRemoved).to.be.false();
+      });
+
+      it('should return false given an invalid negative index', async () => {
+        await w.loadURL(urlPage1);
+        const wasRemoved = w.webContents.navigationHistory.removeEntryAtIndex(-1); // Negative index
+        expect(wasRemoved).to.be.false();
+      });
+    });
+
+    describe('navigationHistory.canGoBack and navigationHistory.goBack API', () => {
+      it('should not be able to go back if history is empty', async () => {
+        expect(w.webContents.navigationHistory.canGoBack()).to.be.false();
+      });
+
+      it('should be able to go back if history is not empty', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(1);
+        expect(w.webContents.navigationHistory.canGoBack()).to.be.true();
+        w.webContents.navigationHistory.goBack();
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(0);
+      });
+    });
+
+    describe('navigationHistory.canGoForward and navigationHistory.goForward API', () => {
+      it('should not be able to go forward if history is empty', async () => {
+        expect(w.webContents.navigationHistory.canGoForward()).to.be.false();
+      });
+
+      it('should not be able to go forward if current index is same as history length', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        expect(w.webContents.navigationHistory.canGoForward()).to.be.false();
+      });
+
+      it('should be able to go forward if history is not empty and active index is less than history length', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        w.webContents.navigationHistory.goBack();
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(0);
+        expect(w.webContents.navigationHistory.canGoForward()).to.be.true();
+        w.webContents.navigationHistory.goForward();
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(1);
+      });
+    });
+
+    describe('navigationHistory.canGoToOffset(index) and navigationHistory.goToOffset(index) API', () => {
+      it('should not be able to go to invalid offset', async () => {
+        expect(w.webContents.navigationHistory.canGoToOffset(-1)).to.be.false();
+        expect(w.webContents.navigationHistory.canGoToOffset(10)).to.be.false();
+      });
+
+      it('should be able to go to valid negative offset', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+        expect(w.webContents.navigationHistory.canGoToOffset(-2)).to.be.true();
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(2);
+        w.webContents.navigationHistory.goToOffset(-2);
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(0);
+      });
+
+      it('should be able to go to valid positive offset', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+
+        w.webContents.navigationHistory.goBack();
+        expect(w.webContents.navigationHistory.canGoToOffset(1)).to.be.true();
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(1);
+        w.webContents.navigationHistory.goToOffset(1);
+        expect(w.webContents.navigationHistory.getActiveIndex()).to.equal(2);
+      });
+    });
+
+    describe('navigationHistory.clear API', () => {
+      it('should be able clear history', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+
+        expect(w.webContents.navigationHistory.length()).to.equal(3);
+        w.webContents.navigationHistory.clear();
+        expect(w.webContents.navigationHistory.length()).to.equal(1);
+      });
+    });
+
     describe('navigationHistory.getEntryAtIndex(index) API ', () => {
       it('should fetch default navigation entry when no urls are loaded', async () => {
         const result = w.webContents.navigationHistory.getEntryAtIndex(0);
@@ -615,6 +741,24 @@ describe('webContents module', () => {
         // Note: Even if no navigation has committed, the history list will always start with an initial navigation entry
         // Ref: https://source.chromium.org/chromium/chromium/src/+/main:ceontent/public/browser/navigation_controller.h;l=381
         expect(w.webContents.navigationHistory.length()).to.equal(1);
+      });
+    });
+
+    describe('navigationHistory.getAllEntries() API', () => {
+      it('should return all navigation entries as an array of NavigationEntry objects', async () => {
+        await w.loadURL(urlPage1);
+        await w.loadURL(urlPage2);
+        await w.loadURL(urlPage3);
+        const entries = w.webContents.navigationHistory.getAllEntries();
+        expect(entries.length).to.equal(3);
+        expect(entries[0]).to.deep.equal({ url: urlPage1, title: 'Page 1' });
+        expect(entries[1]).to.deep.equal({ url: urlPage2, title: 'Page 2' });
+        expect(entries[2]).to.deep.equal({ url: urlPage3, title: 'Page 3' });
+      });
+
+      it('should return an empty array when there is no navigation history', async () => {
+        const entries = w.webContents.navigationHistory.getAllEntries();
+        expect(entries.length).to.equal(0);
       });
     });
   });
@@ -1044,7 +1188,7 @@ describe('webContents module', () => {
       }).to.throw('\'icon\' parameter is required');
 
       expect(() => {
-        w.webContents.startDrag({ file: __filename, icon: path.join(mainFixturesPath, 'blank.png') });
+        w.webContents.startDrag({ file: __filename, icon: path.join(fixturesPath, 'blank.png') });
       }).to.throw(/Failed to load image from path (.+)/);
     });
   });
@@ -1065,6 +1209,22 @@ describe('webContents module', () => {
         child.close();
         expect(currentFocused).to.be.true();
         expect(childFocused).to.be.false();
+      });
+
+      it('does not crash when focusing a WebView webContents', async () => {
+        const w = new BrowserWindow({
+          show: false,
+          webPreferences: {
+            nodeIntegration: true,
+            webviewTag: true
+          }
+        });
+
+        w.show();
+        await w.loadURL('data:text/html,<webview src="data:text/html,hi"></webview>');
+
+        const wc = webContents.getAllWebContents().find((wc) => wc.getType() === 'webview')!;
+        expect(() => wc.focus()).to.not.throw();
       });
     });
 
@@ -1805,9 +1965,9 @@ describe('webContents module', () => {
     afterEach(closeAllWindows);
     it('is triggered with correct log message', (done) => {
       const w = new BrowserWindow({ show: true });
-      w.webContents.on('console-message', (e, level, message) => {
+      w.webContents.on('console-message', (e) => {
         // Don't just assert as Chromium might emit other logs that we should ignore.
-        if (message === 'a') {
+        if (e.message === 'a') {
           done();
         }
       });
@@ -2113,7 +2273,39 @@ describe('webContents module', () => {
   });
 
   ifdescribe(features.isPrintingEnabled())('printToPDF()', () => {
+    const readPDF = async (data: any) => {
+      const tmpDir = await fs.promises.mkdtemp(path.resolve(os.tmpdir(), 'e-spec-printtopdf-'));
+      const pdfPath = path.resolve(tmpDir, 'test.pdf');
+      await fs.promises.writeFile(pdfPath, data);
+      const pdfReaderPath = path.resolve(fixturesPath, 'api', 'pdf-reader.mjs');
+
+      const result = cp.spawn(process.execPath, [pdfReaderPath, pdfPath], {
+        stdio: 'pipe'
+      });
+
+      const stdout: Buffer[] = [];
+      const stderr: Buffer[] = [];
+      result.stdout.on('data', (chunk) => stdout.push(chunk));
+      result.stderr.on('data', (chunk) => stderr.push(chunk));
+
+      const [code, signal] = await new Promise<[number | null, NodeJS.Signals | null]>((resolve) => {
+        result.on('close', (code, signal) => {
+          resolve([code, signal]);
+        });
+      });
+      await fs.promises.rm(tmpDir, { force: true, recursive: true });
+      if (code !== 0) {
+        const errMsg = Buffer.concat(stderr).toString().trim();
+        console.error(`Error parsing PDF file, exit code was ${code}; signal was ${signal}, error: ${errMsg}`);
+      }
+      return JSON.parse(Buffer.concat(stdout).toString().trim());
+    };
+
     let w: BrowserWindow;
+
+    const containsText = (items: any[], text: RegExp) => {
+      return items.some(({ str }: { str: string }) => str.match(text));
+    };
 
     beforeEach(() => {
       w = new BrowserWindow({
@@ -2222,12 +2414,11 @@ describe('webContents module', () => {
       for (const format of Object.keys(paperFormats) as PageSizeString[]) {
         const data = await w.webContents.printToPDF({ pageSize: format });
 
-        const doc = await pdfjs.getDocument(data).promise;
-        const page = await doc.getPage(1);
+        const pdfInfo = await readPDF(data);
 
         // page.view is [top, left, width, height].
-        const width = page.view[2] / 72;
-        const height = page.view[3] / 72;
+        const width = pdfInfo.view[2] / 72;
+        const height = pdfInfo.view[3] / 72;
 
         const approxEq = (a: number, b: number, epsilon = 0.01) => Math.abs(a - b) <= epsilon;
 
@@ -2237,7 +2428,7 @@ describe('webContents module', () => {
     });
 
     it('with custom header and footer', async () => {
-      await w.loadFile(path.join(__dirname, 'fixtures', 'api', 'print-to-pdf-small.html'));
+      await w.loadFile(path.join(fixturesPath, 'api', 'print-to-pdf-small.html'));
 
       const data = await w.webContents.printToPDF({
         displayHeaderFooter: true,
@@ -2245,28 +2436,21 @@ describe('webContents module', () => {
         footerTemplate: '<div>I\'m a PDF footer</div>'
       });
 
-      const doc = await pdfjs.getDocument(data).promise;
-      const page = await doc.getPage(1);
+      const pdfInfo = await readPDF(data);
 
-      const { items } = await page.getTextContent();
-
-      // Check that generated PDF contains a header.
-      const containsText = (text: RegExp) => items.some(({ str }: { str: string }) => str.match(text));
-
-      expect(containsText(/I'm a PDF header/)).to.be.true();
-      expect(containsText(/I'm a PDF footer/)).to.be.true();
+      expect(containsText(pdfInfo.textContent, /I'm a PDF header/)).to.be.true();
+      expect(containsText(pdfInfo.textContent, /I'm a PDF footer/)).to.be.true();
     });
 
     it('in landscape mode', async () => {
       await w.loadFile(path.join(__dirname, 'fixtures', 'api', 'print-to-pdf-small.html'));
 
       const data = await w.webContents.printToPDF({ landscape: true });
-      const doc = await pdfjs.getDocument(data).promise;
-      const page = await doc.getPage(1);
+      const pdfInfo = await readPDF(data);
 
       // page.view is [top, left, width, height].
-      const width = page.view[2];
-      const height = page.view[3];
+      const width = pdfInfo.view[2];
+      const height = pdfInfo.view[3];
 
       expect(width).to.be.greaterThan(height);
     });
@@ -2279,32 +2463,78 @@ describe('webContents module', () => {
         landscape: true
       });
 
-      const doc = await pdfjs.getDocument(data).promise;
+      const pdfInfo = await readPDF(data);
 
       // Check that correct # of pages are rendered.
-      expect(doc.numPages).to.equal(3);
+      expect(pdfInfo.numPages).to.equal(3);
     });
 
     it('does not tag PDFs by default', async () => {
       await w.loadFile(path.join(__dirname, 'fixtures', 'api', 'print-to-pdf-small.html'));
 
       const data = await w.webContents.printToPDF({});
-      const doc = await pdfjs.getDocument(data).promise;
-      const markInfo = await doc.getMarkInfo();
-      expect(markInfo).to.be.null();
+      const pdfInfo = await readPDF(data);
+      expect(pdfInfo.markInfo).to.be.null();
     });
 
     it('can generate tag data for PDFs', async () => {
       await w.loadFile(path.join(__dirname, 'fixtures', 'api', 'print-to-pdf-small.html'));
 
       const data = await w.webContents.printToPDF({ generateTaggedPDF: true });
-      const doc = await pdfjs.getDocument(data).promise;
-      const markInfo = await doc.getMarkInfo();
-      expect(markInfo).to.deep.equal({
+      const pdfInfo = await readPDF(data);
+      expect(pdfInfo.markInfo).to.deep.equal({
         Marked: true,
         UserProperties: false,
         Suspects: false
       });
+    });
+
+    it('from an existing pdf document', async () => {
+      const pdfPath = path.join(fixturesPath, 'cat.pdf');
+      const readyToPrint = once(w.webContents, '-pdf-ready-to-print');
+      await w.loadFile(pdfPath);
+      await readyToPrint;
+      const data = await w.webContents.printToPDF({});
+      const pdfInfo = await readPDF(data);
+      expect(pdfInfo.numPages).to.equal(2);
+      expect(containsText(pdfInfo.textContent, /Cat: The Ideal Pet/)).to.be.true();
+    });
+
+    it('from an existing pdf document in a WebView', async () => {
+      const win = new BrowserWindow({
+        show: false,
+        webPreferences: {
+          webviewTag: true
+        }
+      });
+
+      await win.loadURL('about:blank');
+      const webContentsCreated = once(app, 'web-contents-created') as Promise<[any, WebContents]>;
+
+      const src = url.format({
+        pathname: `${fixturesPath.replaceAll('\\', '/')}/cat.pdf`,
+        protocol: 'file',
+        slashes: true
+      });
+      await win.webContents.executeJavaScript(`
+        new Promise((resolve, reject) => {
+          const webview = new WebView()
+          webview.setAttribute('src', '${src}')
+          document.body.appendChild(webview)
+          webview.addEventListener('did-finish-load', () => {
+            resolve()
+          })
+        })
+      `);
+
+      const [, webContents] = await webContentsCreated;
+
+      await once(webContents, '-pdf-ready-to-print');
+
+      const data = await webContents.printToPDF({});
+      const pdfInfo = await readPDF(data);
+      expect(pdfInfo.numPages).to.equal(2);
+      expect(containsText(pdfInfo.textContent, /Cat: The Ideal Pet/)).to.be.true();
     });
   });
 
@@ -2614,15 +2844,17 @@ describe('webContents module', () => {
       expect({
         width: w.getBounds().width,
         height: w.getBounds().height
-      }).to.deep.equal(process.platform === 'win32' ? {
-        // The width is reported as being larger on Windows? I'm not sure why
-        // this is.
-        width: 136,
-        height: 100
-      } : {
-        width: 100,
-        height: 100
-      });
+      }).to.deep.equal(process.platform === 'win32'
+        ? {
+            // The width is reported as being larger on Windows? I'm not sure why
+            // this is.
+            width: 136,
+            height: 100
+          }
+        : {
+            width: 100,
+            height: 100
+          });
     });
 
     it('does not change window bounds if cancelled', async () => {

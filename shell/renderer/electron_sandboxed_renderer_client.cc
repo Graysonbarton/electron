@@ -11,12 +11,9 @@
 #include "base/base_paths.h"
 #include "base/command_line.h"
 #include "base/containers/contains.h"
-#include "base/files/file_path.h"
-#include "base/path_service.h"
 #include "base/process/process_handle.h"
 #include "base/process/process_metrics.h"
 #include "content/public/renderer/render_frame.h"
-#include "electron/buildflags/buildflags.h"
 #include "shell/common/api/electron_bindings.h"
 #include "shell/common/application_info.h"
 #include "shell/common/gin_helper/dictionary.h"
@@ -60,7 +57,7 @@ v8::Local<v8::Value> GetBinding(v8::Isolate* isolate,
   std::string binding_key = gin::V8ToString(isolate, key);
   gin_helper::Dictionary cache(isolate, GetBindingCache(isolate));
 
-  if (cache.Get(binding_key.c_str(), &exports)) {
+  if (cache.Get(binding_key, &exports)) {
     return exports;
   }
 
@@ -79,7 +76,7 @@ v8::Local<v8::Value> GetBinding(v8::Isolate* isolate,
   DCHECK_NE(mod->nm_context_register_func, nullptr);
   mod->nm_context_register_func(exports, v8::Null(isolate),
                                 isolate->GetCurrentContext(), mod->nm_priv);
-  cache.Set(binding_key.c_str(), exports);
+  cache.Set(binding_key, exports);
   return exports;
 }
 
@@ -98,7 +95,7 @@ double Uptime() {
       .InSecondsF();
 }
 
-void InvokeEmitProcessEvent(v8::Handle<v8::Context> context,
+void InvokeEmitProcessEvent(v8::Local<v8::Context> context,
                             const std::string& event_name) {
   auto* isolate = context->GetIsolate();
   // set by sandboxed_renderer/init.js
@@ -170,7 +167,7 @@ void ElectronSandboxedRendererClient::RunScriptsAtDocumentEnd(
 }
 
 void ElectronSandboxedRendererClient::DidCreateScriptContext(
-    v8::Handle<v8::Context> context,
+    v8::Local<v8::Context> context,
     content::RenderFrame* render_frame) {
   // Only allow preload for the main frame or
   // For devtools we still want to run the preload_bundle script
@@ -201,15 +198,15 @@ void ElectronSandboxedRendererClient::DidCreateScriptContext(
 }
 
 void ElectronSandboxedRendererClient::WillReleaseScriptContext(
-    v8::Handle<v8::Context> context,
+    v8::Local<v8::Context> context,
     content::RenderFrame* render_frame) {
   if (injected_frames_.erase(render_frame) == 0)
     return;
 
   auto* isolate = context->GetIsolate();
-  gin_helper::MicrotasksScope microtasks_scope(
-      isolate, context->GetMicrotaskQueue(),
-      v8::MicrotasksScope::kDoNotRunMicrotasks);
+  gin_helper::MicrotasksScope microtasks_scope{
+      isolate, context->GetMicrotaskQueue(), false,
+      v8::MicrotasksScope::kDoNotRunMicrotasks};
   v8::HandleScope handle_scope(isolate);
   v8::Context::Scope context_scope(context);
   InvokeEmitProcessEvent(context, "exit");
@@ -226,9 +223,9 @@ void ElectronSandboxedRendererClient::EmitProcessEvent(
   v8::HandleScope handle_scope{isolate};
 
   v8::Local<v8::Context> context = GetContext(frame, isolate);
-  gin_helper::MicrotasksScope microtasks_scope(
-      isolate, context->GetMicrotaskQueue(),
-      v8::MicrotasksScope::kDoNotRunMicrotasks);
+  gin_helper::MicrotasksScope microtasks_scope{
+      isolate, context->GetMicrotaskQueue(), false,
+      v8::MicrotasksScope::kDoNotRunMicrotasks};
   v8::Context::Scope context_scope(context);
 
   InvokeEmitProcessEvent(context, event_name);

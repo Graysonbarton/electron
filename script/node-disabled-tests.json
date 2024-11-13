@@ -4,6 +4,8 @@
   "parallel/test-bootstrap-modules",
   "parallel/test-child-process-fork-exec-path",
   "parallel/test-code-cache",
+  "parallel/test-cluster-primary-error",
+  "parallel/test-cluster-primary-kill",
   "parallel/test-crypto-aes-wrap",
   "parallel/test-crypto-authenticated-stream",
   "parallel/test-crypto-des3-wrap",
@@ -35,6 +37,7 @@
   "parallel/test-module-loading-globalpaths",
   "parallel/test-openssl-ca-options",
   "parallel/test-process-versions",
+  "parallel/test-process-get-builtin",
   "parallel/test-repl",
   "parallel/test-repl-underscore",
   "parallel/test-single-executable-blob-config",
@@ -64,6 +67,7 @@
   "parallel/test-snapshot-worker",
   "parallel/test-strace-openat-openssl",
   "parallel/test-tls-alpn-server-client",
+  "parallel/test-tls-cli-min-version-1.0",
   "parallel/test-tls-cli-max-version-1.2",
   "parallel/test-tls-cli-max-version-1.3",
   "parallel/test-tls-cli-min-version-1.1",
@@ -80,6 +84,7 @@
   "parallel/test-tls-finished",
   "parallel/test-tls-generic-stream",
   "parallel/test-tls-getcipher",
+  "parallel/test-tls-getprotocol.js",
   "parallel/test-tls-handshake-error",
   "parallel/test-tls-handshake-exception",
   "parallel/test-tls-hello-parser-failure",
@@ -160,5 +165,6 @@
   "sequential/test-single-executable-application-snapshot-and-code-cache",
   "sequential/test-single-executable-application-use-code-cache",
   "sequential/test-tls-connect",
-  "wpt/test-webcrypto"
+  "wpt/test-webcrypto",
+  "wasm-allocation/test-wasm-allocation"
 ]

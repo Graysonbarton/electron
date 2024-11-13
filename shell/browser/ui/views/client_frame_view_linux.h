@@ -13,6 +13,7 @@
 #include "base/memory/raw_ptr_exclusion.h"
 #include "base/scoped_observation.h"
 #include "shell/browser/ui/views/frameless_view.h"
+#include "third_party/skia/include/core/SkRRect.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/ui_base_types.h"
 #include "ui/linux/linux_ui.h"
@@ -28,9 +29,11 @@
 
 namespace electron {
 
+class NativeWindowViews;
+
 class ClientFrameViewLinux : public FramelessView,
-                             public ui::NativeThemeObserver,
-                             public ui::WindowButtonOrderObserver {
+                             private ui::NativeThemeObserver,
+                             private ui::WindowButtonOrderObserver {
   METADATA_HEADER(ClientFrameViewLinux, FramelessView)
 
  public:
@@ -44,6 +47,7 @@ class ClientFrameViewLinux : public FramelessView,
   gfx::Insets GetInputInsets() const;
   gfx::Rect GetWindowContentBounds() const;
   SkRRect GetRoundedWindowContentBounds() const;
+  int GetTranslucentTopAreaHeight() const;
   // Returns which edges of the frame are tiled.
   const ui::WindowTiledEdges& tiled_edges() const { return tiled_edges_; }
   void set_tiled_edges(ui::WindowTiledEdges tiled_edges) {
@@ -70,14 +74,17 @@ class ClientFrameViewLinux : public FramelessView,
   void SizeConstraintsChanged() override;
 
   // Overridden from View:
-  gfx::Size CalculatePreferredSize() const override;
+  gfx::Size CalculatePreferredSize(
+      const views::SizeBounds& available_size) const override;
   gfx::Size GetMinimumSize() const override;
   gfx::Size GetMaximumSize() const override;
   void Layout(PassKey) override;
   void OnPaint(gfx::Canvas* canvas) override;
 
-  // Overriden from views::ViewTargeterDelegate
+  // Overridden from views::ViewTargeterDelegate
   views::View* TargetForRect(views::View* root, const gfx::Rect& rect) override;
+
+  ui::WindowFrameProvider* GetFrameProvider() const;
 
  private:
   static constexpr int kNavButtonCount = 4;
@@ -134,8 +141,6 @@ class ClientFrameViewLinux : public FramelessView,
   std::vector<views::FrameButton> trailing_frame_buttons_;
 
   bool host_supports_client_frame_shadow_ = false;
-
-  raw_ptr<ui::WindowFrameProvider> frame_provider_;
 
   base::ScopedObservation<ui::NativeTheme, ui::NativeThemeObserver>
       native_theme_observer_{this};

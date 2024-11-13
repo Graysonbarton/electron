@@ -10,7 +10,6 @@
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/path_service.h"
-#include "build/build_config.h"
 #include "chrome/browser/extensions/chrome_url_request_util.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/extensions/chrome_manifest_url_handlers.h"
@@ -18,6 +17,7 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/frame_tree_node_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/common/user_agent.h"
 #include "extensions/browser/api/core_extensions_browser_api_provider.h"
@@ -33,7 +33,6 @@
 #include "extensions/common/file_util.h"
 #include "extensions/common/manifest_constants.h"
 #include "extensions/common/manifest_url_handlers.h"
-#include "net/base/mime_util.h"
 #include "services/network/public/mojom/url_loader.mojom.h"
 #include "shell/browser/browser.h"
 #include "shell/browser/electron_browser_client.h"
@@ -122,21 +121,18 @@ BrowserContext* ElectronExtensionsBrowserClient::GetOriginalContext(
 
 content::BrowserContext*
 ElectronExtensionsBrowserClient::GetContextRedirectedToOriginal(
-    content::BrowserContext* context,
-    bool force_guest_profile) {
+    content::BrowserContext* context) {
   return GetOriginalContext(context);
 }
 
 content::BrowserContext* ElectronExtensionsBrowserClient::GetContextOwnInstance(
-    content::BrowserContext* context,
-    bool force_guest_profile) {
+    content::BrowserContext* context) {
   return context;
 }
 
 content::BrowserContext*
 ElectronExtensionsBrowserClient::GetContextForOriginalOnly(
-    content::BrowserContext* context,
-    bool force_guest_profile) {
+    content::BrowserContext* context) {
   return context->IsOffTheRecord() ? nullptr : context;
 }
 
@@ -213,10 +209,11 @@ bool AllowCrossRendererResourceLoad(
     const extensions::Extension* extension,
     const extensions::ExtensionSet& extensions,
     const extensions::ProcessMap& process_map,
+    const GURL& upstream_url,
     bool* allowed) {
   if (extensions::url_request_util::AllowCrossRendererResourceLoad(
           request, destination, page_transition, child_id, is_incognito,
-          extension, extensions, process_map, allowed)) {
+          extension, extensions, process_map, upstream_url, allowed)) {
     return true;
   }
 
@@ -242,11 +239,12 @@ bool ElectronExtensionsBrowserClient::AllowCrossRendererResourceLoad(
     bool is_incognito,
     const extensions::Extension* extension,
     const extensions::ExtensionSet& extensions,
-    const extensions::ProcessMap& process_map) {
+    const extensions::ProcessMap& process_map,
+    const GURL& upstream_url) {
   bool allowed = false;
   if (::electron::AllowCrossRendererResourceLoad(
           request, destination, page_transition, child_id, is_incognito,
-          extension, extensions, process_map, &allowed)) {
+          extension, extensions, process_map, upstream_url, &allowed)) {
     return allowed;
   }
 
@@ -270,7 +268,8 @@ ElectronExtensionsBrowserClient::GetProcessManagerDelegate() const {
 
 mojo::PendingRemote<network::mojom::URLLoaderFactory>
 ElectronExtensionsBrowserClient::GetControlledFrameEmbedderURLLoader(
-    int frame_tree_node_id,
+    const url::Origin& app_origin,
+    content::FrameTreeNodeId frame_tree_node_id,
     content::BrowserContext* browser_context) {
   return mojo::PendingRemote<network::mojom::URLLoaderFactory>();
 }
@@ -342,13 +341,12 @@ void ElectronExtensionsBrowserClient::BroadcastEventToRenderers(
     return;
   }
 
-  auto event = std::make_unique<extensions::Event>(histogram_value, event_name,
-                                                   args.Clone());
   for (auto const& [key, browser_context] :
        ElectronBrowserContext::browser_context_map()) {
     if (browser_context) {
       extensions::EventRouter::Get(browser_context.get())
-          ->BroadcastEvent(std::move(event));
+          ->BroadcastEvent(std::make_unique<extensions::Event>(
+              histogram_value, event_name, args.Clone()));
     }
   }
 }
@@ -370,6 +368,12 @@ bool ElectronExtensionsBrowserClient::IsMinBrowserVersionSupported(
 void ElectronExtensionsBrowserClient::SetAPIClientForTest(
     extensions::ExtensionsAPIClient* api_client) {
   api_client_.reset(api_client);
+}
+
+void ElectronExtensionsBrowserClient::CreateExtensionWebContentsObserver(
+    content::WebContents* web_contents) {
+  extensions::ElectronExtensionWebContentsObserver::CreateForWebContents(
+      web_contents);
 }
 
 extensions::ExtensionWebContentsObserver*

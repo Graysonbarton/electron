@@ -38,8 +38,9 @@
 #include "content/public/browser/gpu_data_manager.h"
 #include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/render_frame_host.h"
-#include "content/public/common/content_switches.h"
 #include "crypto/crypto_buildflags.h"
+#include "electron/mas.h"
+#include "gin/handle.h"
 #include "media/audio/audio_manager.h"
 #include "net/dns/public/dns_over_https_config.h"
 #include "net/dns/public/dns_over_https_server_config.h"
@@ -51,15 +52,14 @@
 #include "services/network/network_service.h"
 #include "shell/app/command_line_args.h"
 #include "shell/browser/api/electron_api_menu.h"
-#include "shell/browser/api/electron_api_session.h"
 #include "shell/browser/api/electron_api_utility_process.h"
 #include "shell/browser/api/electron_api_web_contents.h"
 #include "shell/browser/api/gpuinfo_manager.h"
+#include "shell/browser/api/process_metric.h"
 #include "shell/browser/browser_process_impl.h"
-#include "shell/browser/electron_browser_context.h"
 #include "shell/browser/electron_browser_main_parts.h"
 #include "shell/browser/javascript_environment.h"
-#include "shell/browser/login_handler.h"
+#include "shell/browser/net/resolve_proxy_helper.h"
 #include "shell/browser/relauncher.h"
 #include "shell/common/application_info.h"
 #include "shell/common/electron_command_line.h"
@@ -70,16 +70,17 @@
 #include "shell/common/gin_converters/file_path_converter.h"
 #include "shell/common/gin_converters/gurl_converter.h"
 #include "shell/common/gin_converters/image_converter.h"
+#include "shell/common/gin_converters/login_item_settings_converter.h"
 #include "shell/common/gin_converters/net_converter.h"
 #include "shell/common/gin_converters/value_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/object_template_builder.h"
 #include "shell/common/language_util.h"
 #include "shell/common/node_includes.h"
 #include "shell/common/options_switches.h"
-#include "shell/common/platform_util.h"
 #include "shell/common/thread_restrictions.h"
-#include "shell/common/v8_value_serializer.h"
+#include "shell/common/v8_util.h"
 #include "ui/gfx/image/image.h"
 
 #if BUILDFLAG(IS_WIN)
@@ -90,6 +91,11 @@
 #if BUILDFLAG(IS_MAC)
 #include <CoreFoundation/CoreFoundation.h>
 #include "shell/browser/ui/cocoa/electron_bundle_mover.h"
+#endif
+
+#if BUILDFLAG(IS_LINUX)
+#include "base/nix/scoped_xdg_activation_token_injector.h"
+#include "base/nix/xdg_util.h"
 #endif
 
 using electron::Browser;
@@ -411,6 +417,12 @@ bool NotificationCallbackWrapper(
     base::CommandLine cmd,
     const base::FilePath& cwd,
     const std::vector<uint8_t> additional_data) {
+#if BUILDFLAG(IS_LINUX)
+  // Set the global activation token sent as a command line switch by another
+  // electron app instance. This also removes the switch after use to prevent
+  // any side effects of leaving it in the command line after this point.
+  base::nix::ExtractXdgActivationTokenFromCmdLine(cmd);
+#endif
   // Make sure the callback is called after app gets ready.
   if (Browser::Get()->is_ready()) {
     callback.Run(std::move(cmd), cwd, std::move(additional_data));
@@ -730,6 +742,7 @@ void App::AllowCertificateError(
 
 base::OnceClosure App::SelectClientCertificate(
     content::BrowserContext* browser_context,
+    int process_id,
     content::WebContents* web_contents,
     net::SSLCertRequestInfo* cert_request_info,
     net::ClientCertIdentityList identities,
@@ -807,12 +820,6 @@ void App::BrowserChildProcessCrashedOrKilled(
   details.Set("serviceName", data.metrics_name);
   if (!data.name.empty()) {
     details.Set("name", data.name);
-  }
-  if (data.process_type == content::PROCESS_TYPE_UTILITY) {
-    base::ProcessId pid = data.GetProcess().Pid();
-    auto utility_process_wrapper = UtilityProcessWrapper::FromProcessId(pid);
-    if (utility_process_wrapper)
-      utility_process_wrapper->Shutdown(info.exit_code);
   }
   Emit("child-process-gone", details);
 }
@@ -1027,6 +1034,15 @@ bool App::RequestSingleInstanceLock(gin::Arguments* args) {
       base::BindRepeating(NotificationCallbackWrapper, cb));
 #endif
 
+#if BUILDFLAG(IS_LINUX)
+  // Read the xdg-activation token and set it in the command line for the
+  // duration of the notification in order to ensure this is propagated to an
+  // already running electron app instance if it exists.
+  // The activation token received from the launching app is used later when
+  // activating the existing electron app instance window.
+  base::nix::ScopedXdgActivationTokenInjector activation_token_injector(
+      *base::CommandLine::ForCurrentProcess(), *base::Environment::Create());
+#endif
   switch (process_singleton_->NotifyOtherProcessOrCreate()) {
     case ProcessSingleton::NotifyResult::PROCESS_NONE:
       if (content::BrowserThread::IsThreadInitialized(
@@ -1276,10 +1292,17 @@ std::vector<gin_helper::Dictionary> App::GetAppMetrics(v8::Isolate* isolate) {
     auto pid_dict = gin_helper::Dictionary::CreateEmpty(isolate);
     auto cpu_dict = gin_helper::Dictionary::CreateEmpty(isolate);
 
-    double usage =
-        process_metric.second->metrics->GetPlatformIndependentCPUUsage()
-            .value_or(0);
-    cpu_dict.Set("percentCPUUsage", usage / processor_count);
+    // Default usage percentage to 0 for compatibility
+    double usagePercent = 0;
+    if (auto usage = process_metric.second->metrics->GetCumulativeCPUUsage();
+        usage.has_value()) {
+      cpu_dict.Set("cumulativeCPUUsage", usage->InSecondsF());
+      usagePercent =
+          process_metric.second->metrics->GetPlatformIndependentCPUUsage(
+              *usage);
+    }
+
+    cpu_dict.Set("percentCPUUsage", usagePercent / processor_count);
 
 #if !BUILDFLAG(IS_WIN)
     cpu_dict.Set("idleWakeupsPerSecond",
@@ -1575,15 +1598,6 @@ void ConfigureHostResolver(v8::Isolate* isolate,
   }
   net::SecureDnsMode secure_dns_mode = net::SecureDnsMode::kOff;
   std::string default_doh_templates;
-  if (base::FeatureList::IsEnabled(features::kDnsOverHttps)) {
-    if (features::kDnsOverHttpsFallbackParam.Get()) {
-      secure_dns_mode = net::SecureDnsMode::kAutomatic;
-    } else {
-      secure_dns_mode = net::SecureDnsMode::kSecure;
-    }
-    default_doh_templates = features::kDnsOverHttpsTemplatesParam.Get();
-  }
-
   net::DnsOverHttpsConfig doh_config;
   if (!default_doh_templates.empty() &&
       secure_dns_mode != net::SecureDnsMode::kOff) {

@@ -1,6 +1,9 @@
-import { expect } from 'chai';
-import * as dns from 'node:dns';
 import { net, session, BrowserWindow, ClientRequestConstructorOptions } from 'electron/main';
+
+import { expect } from 'chai';
+
+import * as dns from 'node:dns';
+
 import { collectStreamBody, getResponse, respondNTimes, respondOnce } from './lib/net-helpers';
 
 // See https://github.com/nodejs/node/issues/40702.
@@ -378,7 +381,7 @@ describe('net module (session)', () => {
         url: 'https://electronjs.org',
         domain: 'wssss.iamabaddomain.fun',
         name: 'cookie1'
-      })).to.eventually.be.rejectedWith(/Failed to set cookie with an invalid domain attribute/);
+      })).to.eventually.be.rejectedWith(/Failed to set cookie - The cookie was set with an invalid Domain attribute./);
     });
 
     it('should be able correctly filter out cookies that are session', async () => {

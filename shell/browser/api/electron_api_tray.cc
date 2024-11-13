@@ -9,6 +9,7 @@
 
 #include "base/containers/fixed_flat_map.h"
 #include "gin/dictionary.h"
+#include "gin/handle.h"
 #include "gin/object_template_builder.h"
 #include "shell/browser/api/electron_api_menu.h"
 #include "shell/browser/api/ui_event.h"
@@ -20,9 +21,8 @@
 #include "shell/common/gin_converters/guid_converter.h"
 #include "shell/common/gin_converters/image_converter.h"
 #include "shell/common/gin_helper/dictionary.h"
-#include "shell/common/gin_helper/function_template_extensions.h"
+#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/node_includes.h"
-#include "ui/gfx/image/image.h"
 
 namespace gin {
 

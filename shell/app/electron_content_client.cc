@@ -11,18 +11,13 @@
 
 #include "base/command_line.h"
 #include "base/files/file_util.h"
-#include "base/path_service.h"
 #include "base/strings/string_split.h"
-#include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "content/public/common/content_constants.h"
-#include "content/public/common/content_switches.h"
 #include "electron/buildflags/buildflags.h"
 #include "electron/fuses.h"
 #include "extensions/common/constants.h"
 #include "pdf/buildflags.h"
 #include "ppapi/buildflags/buildflags.h"
-#include "shell/common/electron_paths.h"
 #include "shell/common/options_switches.h"
 #include "shell/common/process_util.h"
 #include "third_party/widevine/cdm/buildflags.h"
@@ -39,16 +34,13 @@
 #endif  // BUILDFLAG(ENABLE_WIDEVINE)
 
 #if BUILDFLAG(ENABLE_PDF_VIEWER)
-#include "components/pdf/common/constants.h"
-#include "pdf/pdf.h"  // nogncheck
+#include "components/pdf/common/constants.h"  // nogncheck
 #include "shell/common/electron_constants.h"
 #endif  // BUILDFLAG(ENABLE_PDF_VIEWER)
 
 #if BUILDFLAG(ENABLE_PLUGINS)
 #include "content/public/common/content_plugin_info.h"
-#include "ppapi/shared_impl/ppapi_permissions.h"
-#include "ppapi/shared_impl/ppapi_switches.h"  // nogncheck crbug.com/1125897
-#endif                                         // BUILDFLAG(ENABLE_PLUGINS)
+#endif  // BUILDFLAG(ENABLE_PLUGINS)
 
 namespace electron {
 
@@ -131,7 +123,7 @@ std::u16string ElectronContentClient::GetLocalizedString(int message_id) {
   return l10n_util::GetStringUTF16(message_id);
 }
 
-base::StringPiece ElectronContentClient::GetDataResource(
+std::string_view ElectronContentClient::GetDataResource(
     int resource_id,
     ui::ResourceScaleFactor scale_factor) {
   return ui::ResourceBundle::GetSharedInstance().GetRawDataResourceForScale(
@@ -185,7 +177,7 @@ void ElectronContentClient::AddAdditionalSchemes(Schemes* schemes) {
 
 void ElectronContentClient::AddPlugins(
     std::vector<content::ContentPluginInfo>* plugins) {
-#if BUILDFLAG(ENABLE_PLUGINS) && BUILDFLAG(ENABLE_PDF_VIEWER)
+#if BUILDFLAG(ENABLE_PDF_VIEWER)
   static constexpr char kPDFPluginExtension[] = "pdf";
   static constexpr char kPDFPluginDescription[] = "Portable Document Format";
 
@@ -195,12 +187,13 @@ void ElectronContentClient::AddPlugins(
   pdf_info.name = kPDFInternalPluginName;
   pdf_info.description = kPDFPluginDescription;
   // This isn't a real file path; it's just used as a unique identifier.
-  pdf_info.path = base::FilePath(kPdfPluginPath);
+  static constexpr std::string_view kPdfPluginPath = "internal-pdf-viewer";
+  pdf_info.path = base::FilePath::FromASCII(kPdfPluginPath);
   content::WebPluginMimeType pdf_mime_type(
       pdf::kInternalPluginMimeType, kPDFPluginExtension, kPDFPluginDescription);
   pdf_info.mime_types.push_back(pdf_mime_type);
   plugins->push_back(pdf_info);
-#endif  // BUILDFLAG(ENABLE_PLUGINS) && BUILDFLAG(ENABLE_PDF_VIEWER)
+#endif  // BUILDFLAG(ENABLE_PDF_VIEWER)
 }
 
 void ElectronContentClient::AddContentDecryptionModules(

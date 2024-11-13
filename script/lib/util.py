@@ -4,15 +4,14 @@ import contextlib
 import errno
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
 from urllib.request import urlopen
 import zipfile
 
-# from lib.config import is_verbose_mode
-def is_verbose_mode():
-  return False
+from lib.config import verbose_mode_print
 
 ELECTRON_DIR = os.path.abspath(
   os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
@@ -111,13 +110,11 @@ def safe_mkdir(path):
 def execute(argv, env=None, cwd=None):
   if env is None:
     env = os.environ
-  if is_verbose_mode():
-    print(' '.join(argv))
+  verbose_mode_print(' '.join(argv))
   try:
     output = subprocess.check_output(argv, stderr=subprocess.STDOUT,
                                      env=env, cwd=cwd)
-    if is_verbose_mode():
-      print(output)
+    verbose_mode_print(output.decode('utf-8').strip())
     return output
   except subprocess.CalledProcessError as e:
     print(e.output)
@@ -158,7 +155,7 @@ def azput(prefix, key_prefix, files):
   print(output)
 
 def get_out_dir():
-  out_dir = 'Debug'
+  out_dir = 'Default'
   override = os.environ.get('ELECTRON_OUT_DIR')
   if override is not None:
     out_dir = override
@@ -184,16 +181,31 @@ def get_electron_exec():
 
 def get_buildtools_executable(name):
   buildtools = os.path.realpath(os.path.join(ELECTRON_DIR, '..', 'buildtools'))
-  chromium_platform = {
-    'darwin': 'mac',
-    'linux': 'linux64',
-    'linux2': 'linux64',
-    'win32': 'win',
-    'cygwin': 'win',
-  }[sys.platform]
+
+  if sys.platform == 'darwin':
+    chromium_platform = 'mac_arm64' if platform.machine() == 'arm64' else 'mac'
+  elif sys.platform in ['win32', 'cygwin']:
+    chromium_platform = 'win'
+  elif sys.platform in ['linux', 'linux2']:
+    chromium_platform = 'linux64'
+  else:
+    raise Exception(f"Unsupported platform: {sys.platform}")
+  
+  if name == 'clang-format':
+    chromium_platform += '-format'
+
   path = os.path.join(buildtools, chromium_platform, name)
   if sys.platform == 'win32':
     path += '.exe'
+  return path
+
+def get_depot_tools_executable(name):
+  buildtools = os.path.realpath(
+    os.path.join(ELECTRON_DIR, '..', 'third_party', 'depot_tools'))
+
+  path = os.path.join(buildtools, name)
+  if sys.platform == 'win32':
+    path += '.bat'
   return path
 
 def get_linux_binaries():

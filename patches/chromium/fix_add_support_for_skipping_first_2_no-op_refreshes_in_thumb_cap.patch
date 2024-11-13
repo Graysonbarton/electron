@@ -14,23 +14,23 @@ This really isn't ideal at all, we need to refactor desktopCapturer (read comple
 to use StartUpdating and handle the events instead of using the "get the list once" method.
 
 diff --git a/chrome/browser/media/webrtc/desktop_media_list.h b/chrome/browser/media/webrtc/desktop_media_list.h
-index 0c6fccf16a11bbaff10115308e4b489490e5d3e6..e5ec31054a43989e630115605de435399d36559b 100644
+index 05e2c0a8c61d55899fbd92c40e495b1581102d2e..f262e311e7bc1ceb6f51242d6b9f40d5b8ffeabd 100644
 --- a/chrome/browser/media/webrtc/desktop_media_list.h
 +++ b/chrome/browser/media/webrtc/desktop_media_list.h
-@@ -143,6 +143,8 @@ class DesktopMediaList {
-   // important when IsSourceDelegated() returns true, as it helps to notify the
-   // delegated source list when it should be hidden.
-   virtual void HideList() = 0;
+@@ -148,6 +148,8 @@ class DesktopMediaList {
+   // source lists that need to be displayed independently from when the
+   // DesktopMediaList gains focus.
+   virtual void ShowDelegatedList() = 0;
 +
 +  int skip_next_refresh_ = 0;
  };
  
  #endif  // CHROME_BROWSER_MEDIA_WEBRTC_DESKTOP_MEDIA_LIST_H_
 diff --git a/chrome/browser/media/webrtc/desktop_media_list_base.cc b/chrome/browser/media/webrtc/desktop_media_list_base.cc
-index 780927301744ea7312f230cec76a24a33d71f767..d19b1cc9dedf839f12f4113db64293e5c8150f51 100644
+index c76fd79c7998b963f8edfed525acac65fcef35f7..09ca689cde5c1cc3257df277f516d924fd171953 100644
 --- a/chrome/browser/media/webrtc/desktop_media_list_base.cc
 +++ b/chrome/browser/media/webrtc/desktop_media_list_base.cc
-@@ -230,7 +230,11 @@ uint32_t DesktopMediaListBase::GetImageHash(const gfx::Image& image) {
+@@ -236,7 +236,11 @@ uint32_t DesktopMediaListBase::GetImageHash(const gfx::Image& image) {
  void DesktopMediaListBase::OnRefreshComplete() {
    DCHECK_CURRENTLY_ON(BrowserThread::UI);
    DCHECK(refresh_callback_);

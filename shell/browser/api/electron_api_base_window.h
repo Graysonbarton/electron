@@ -14,26 +14,32 @@
 
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
-#include "gin/handle.h"
-#include "shell/browser/native_window.h"
 #include "shell/browser/native_window_observer.h"
 #include "shell/common/api/electron_api_native_image.h"
-#include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/trackable_object.h"
 
-namespace electron::api {
+namespace gin_helper {
+class Arguments;
+class PersistentDictionary;
+template <typename T>
+class Handle;
+}  // namespace gin_helper
+
+namespace electron {
+
+class NativeWindow;
+
+namespace api {
 
 class View;
 
 class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
-                   public NativeWindowObserver {
+                   private NativeWindowObserver {
  public:
   static gin_helper::WrappableBase* New(gin_helper::Arguments* args);
 
   static void BuildPrototype(v8::Isolate* isolate,
                              v8::Local<v8::FunctionTemplate> prototype);
-
-  base::WeakPtr<BaseWindow> GetWeakPtr() { return weak_factory_.GetWeakPtr(); }
 
   NativeWindow* window() const { return window_.get(); }
 
@@ -78,7 +84,7 @@ class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
   void OnWindowEnterHtmlFullScreen() override;
   void OnWindowLeaveHtmlFullScreen() override;
   void OnWindowAlwaysOnTopChanged() override;
-  void OnExecuteAppCommand(const std::string& command_name) override;
+  void OnExecuteAppCommand(std::string_view command_name) override;
   void OnTouchBarItemResult(const std::string& item_id,
                             const base::Value::Dict& details) override;
   void OnNewWindowForTab() override;
@@ -182,7 +188,9 @@ class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
   void SetVisibleOnAllWorkspaces(bool visible, gin_helper::Arguments* args);
   bool IsVisibleOnAllWorkspaces() const;
   void SetAutoHideCursor(bool auto_hide);
-  virtual void SetVibrancy(v8::Isolate* isolate, v8::Local<v8::Value> value);
+  virtual void SetVibrancy(v8::Isolate* isolate,
+                           v8::Local<v8::Value> value,
+                           gin_helper::Arguments* args);
   void SetBackgroundMaterial(const std::string& vibrancy);
 
 #if BUILDFLAG(IS_MAC)
@@ -242,6 +250,11 @@ class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
   bool SetThumbnailToolTip(const std::string& tooltip);
   void SetAppDetails(const gin_helper::Dictionary& options);
 #endif
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+  void SetTitleBarOverlay(const gin_helper::Dictionary& options,
+                          gin_helper::Arguments* args);
+#endif
   int32_t GetID() const;
 
   // Helpers.
@@ -272,9 +285,11 @@ class BaseWindow : public gin_helper::TrackableObject<BaseWindow>,
   // Reference to JS wrapper to prevent garbage collection.
   v8::Global<v8::Value> self_ref_;
 
+ private:
   base::WeakPtrFactory<BaseWindow> weak_factory_{this};
 };
 
-}  // namespace electron::api
+}  // namespace api
+}  // namespace electron
 
 #endif  // ELECTRON_SHELL_BROWSER_API_ELECTRON_API_BASE_WINDOW_H_

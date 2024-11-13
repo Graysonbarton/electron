@@ -27,7 +27,8 @@ The `session` module has the following methods:
 
 * `partition` string
 * `options` Object (optional)
-  * `cache` boolean - Whether to enable cache.
+  * `cache` boolean - Whether to enable cache. Default is `true` unless the
+    [`--disable-http-cache` switch](command-line-switches.md#--disable-http-cache) is used.
 
 Returns `Session` - A session instance from `partition` string. When there is an existing
 `Session` with the same `partition`, it will be returned; otherwise a new
@@ -46,7 +47,8 @@ of an existing `Session` object.
 
 * `path` string
 * `options` Object (optional)
-  * `cache` boolean - Whether to enable cache.
+  * `cache` boolean - Whether to enable cache. Default is `true` unless the
+    [`--disable-http-cache` switch](command-line-switches.md#--disable-http-cache) is used.
 
 Returns `Session` - A session instance from the absolute path as specified by the `path`
 string. When there is an existing `Session` with the same absolute path, it
@@ -143,6 +145,71 @@ Returns:
 Emitted after an extension is loaded and all necessary browser state is
 initialized to support the start of the extension's background page.
 
+#### Event: 'file-system-access-restricted'
+
+Returns:
+
+* `event` Event
+* `details` Object
+  * `origin` string - The origin that initiated access to the blocked path.
+  * `isDirectory` boolean - Whether or not the path is a directory.
+  * `path` string - The blocked path attempting to be accessed.
+* `callback` Function
+  * `action` string - The action to take as a result of the restricted path access attempt.
+    * `allow` - This will allow `path` to be accessed despite restricted status.
+    * `deny` - This will block the access request and trigger an [`AbortError`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController/abort).
+    * `tryAgain` - This will open a new file picker and allow the user to choose another path.
+
+```js
+const { app, dialog, BrowserWindow, session } = require('electron')
+
+async function createWindow () {
+  const mainWindow = new BrowserWindow()
+
+  await mainWindow.loadURL('https://buzzfeed.com')
+
+  session.defaultSession.on('file-system-access-restricted', async (e, details, callback) => {
+    const { origin, path } = details
+    const { response } = await dialog.showMessageBox({
+      message: `Are you sure you want ${origin} to open restricted path ${path}?`,
+      title: 'File System Access Restricted',
+      buttons: ['Choose a different folder', 'Allow', 'Cancel'],
+      cancelId: 2
+    })
+
+    if (response === 0) {
+      callback('tryAgain')
+    } else if (response === 1) {
+      callback('allow')
+    } else {
+      callback('deny')
+    }
+  })
+
+  mainWindow.webContents.executeJavaScript(`
+    window.showDirectoryPicker({
+      id: 'electron-demo',
+      mode: 'readwrite',
+      startIn: 'downloads',
+    }).catch(e => {
+      console.log(e)
+    })`, true
+  )
+}
+
+app.whenReady().then(() => {
+  createWindow()
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  })
+})
+
+app.on('window-all-closed', function () {
+  if (process.platform !== 'darwin') app.quit()
+})
+```
+
 #### Event: 'preconnect'
 
 Returns:
@@ -203,7 +270,8 @@ Returns:
 * `event` Event
 * `details` Object
   * `deviceList` [HIDDevice[]](structures/hid-device.md)
-  * `frame` [WebFrameMain](web-frame-main.md)
+  * `frame` [WebFrameMain](web-frame-main.md) | null - The frame initiating this event.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
 * `callback` Function
   * `deviceId` string | null (optional)
 
@@ -267,7 +335,8 @@ Returns:
 * `event` Event
 * `details` Object
   * `device` [HIDDevice](structures/hid-device.md)
-  * `frame` [WebFrameMain](web-frame-main.md)
+  * `frame` [WebFrameMain](web-frame-main.md) | null - The frame initiating this event.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
 
 Emitted after `navigator.hid.requestDevice` has been called and
 `select-hid-device` has fired if a new device becomes available before
@@ -282,7 +351,8 @@ Returns:
 * `event` Event
 * `details` Object
   * `device` [HIDDevice](structures/hid-device.md)
-  * `frame` [WebFrameMain](web-frame-main.md)
+  * `frame` [WebFrameMain](web-frame-main.md) | null - The frame initiating this event.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
 
 Emitted after `navigator.hid.requestDevice` has been called and
 `select-hid-device` has fired if a device has been removed before the callback
@@ -408,7 +478,8 @@ Returns:
 * `event` Event
 * `details` Object
   * `port` [SerialPort](structures/serial-port.md)
-  * `frame` [WebFrameMain](web-frame-main.md)
+  * `frame` [WebFrameMain](web-frame-main.md) | null - The frame initiating this event.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
   * `origin` string - The origin that the device has been revoked from.
 
 Emitted after `SerialPort.forget()` has been called.  This event can be used
@@ -430,7 +501,7 @@ app.whenReady().then(() => {
 })
 ```
 
-```js
+```js @ts-nocheck
 // Renderer Process
 
 const portConnect = async () => {
@@ -452,7 +523,8 @@ Returns:
 * `event` Event
 * `details` Object
   * `deviceList` [USBDevice[]](structures/usb-device.md)
-  * `frame` [WebFrameMain](web-frame-main.md)
+  * `frame` [WebFrameMain](web-frame-main.md) | null - The frame initiating this event.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
 * `callback` Function
   * `deviceId` string (optional)
 
@@ -695,7 +767,7 @@ Returns `Promise<void>` - Resolves when all connections are closed.
 #### `ses.fetch(input[, init])`
 
 * `input` string | [GlobalRequest](https://nodejs.org/api/globals.html#request)
-* `init` [RequestInit](https://developer.mozilla.org/en-US/docs/Web/API/fetch#options) & { bypassCustomProtocolHandlers?: boolean } (optional)
+* `init` [RequestInit](https://developer.mozilla.org/en-US/docs/Web/API/fetch#options) & \{ bypassCustomProtocolHandlers?: boolean \} (optional)
 
 Returns `Promise<GlobalResponse>` - see [Response](https://developer.mozilla.org/en-US/docs/Web/API/Response).
 
@@ -729,11 +801,10 @@ Limitations:
 * The `.type` and `.url` values of the returned `Response` object are
   incorrect.
 
-By default, requests made with `net.fetch` can be made to [custom
-protocols](protocol.md) as well as `file:`, and will trigger
-[webRequest](web-request.md) handlers if present. When the non-standard
-`bypassCustomProtocolHandlers` option is set in RequestInit, custom protocol
-handlers will not be called for this request. This allows forwarding an
+By default, requests made with `net.fetch` can be made to [custom protocols](protocol.md)
+as well as `file:`, and will trigger [webRequest](web-request.md) handlers if present.
+When the non-standard `bypassCustomProtocolHandlers` option is set in RequestInit,
+custom protocol handlers will not be called for this request. This allows forwarding an
 intercepted request to the built-in handler. [webRequest](web-request.md)
 handlers will still be triggered when bypassing custom protocols.
 
@@ -889,11 +960,12 @@ session.fromPartition('some-partition').setPermissionCheckHandler((webContents, 
 })
 ```
 
-#### `ses.setDisplayMediaRequestHandler(handler)`
+#### `ses.setDisplayMediaRequestHandler(handler[, opts])`
 
 * `handler` Function | null
   * `request` Object
-    * `frame` [WebFrameMain](web-frame-main.md) - Frame that is requesting access to media.
+    * `frame` [WebFrameMain](web-frame-main.md) | null - Frame that is requesting access to media.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
     * `securityOrigin` String - Origin of the page making the request.
     * `videoRequested` Boolean - true if the web content requested a video stream.
     * `audioRequested` Boolean - true if the web content requested an audio stream.
@@ -916,11 +988,17 @@ session.fromPartition('some-partition').setPermissionCheckHandler((webContents, 
          and this is set to `true`, then local playback of audio will not be muted (e.g. using `MediaRecorder`
          to record `WebFrameMain` with this flag set to `true` will allow audio to pass through to the speakers
          while recording). Default is `false`.
+* `opts` Object (optional) _macOS_ _Experimental_
+  * `useSystemPicker` Boolean - true if the available native system picker should be used. Default is `false`. _macOS_ _Experimental_
 
 This handler will be called when web content requests access to display media
 via the `navigator.mediaDevices.getDisplayMedia` API. Use the
 [desktopCapturer](desktop-capturer.md) API to choose which stream(s) to grant
 access to.
+
+`useSystemPicker` allows an application to use the system picker instead of providing a specific video source from `getSources`.
+This option is experimental, and currently available for MacOS 15+ only. If the system picker is available and `useSystemPicker`
+is set to `true`, the handler will not be invoked.
 
 ```js
 const { session, desktopCapturer } = require('electron')
@@ -930,7 +1008,11 @@ session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
     // Grant access to the first screen found.
     callback({ video: sources[0] })
   })
-})
+  // Use the system picker if available.
+  // Note: this is currently experimental. If the system picker
+  // is available, it will be used and the media request handler
+  // will not be invoked.
+}, { useSystemPicker: true })
 ```
 
 Passing a [WebFrameMain](web-frame-main.md) object as a video or audio stream
@@ -1084,7 +1166,8 @@ app.whenReady().then(() => {
         pin displayed on the device.
       * `providePin`
         This prompt is requesting that a pin be provided for the device.
-    * `frame` [WebFrameMain](web-frame-main.md)
+    * `frame` [WebFrameMain](web-frame-main.md) | null - The frame initiating this handler.
+      May be `null` if accessed after the frame has either navigated or been destroyed.
     * `pin` string (optional) - The pin value to verify if `pairingKind` is `confirmPin`.
   * `callback` Function
     * `response` Object
@@ -1447,7 +1530,7 @@ Returns `Promise<void>` - resolves when all data has been cleared.
 
 Clears various different types of data.
 
-This method clears more types of data and is more thourough than the
+This method clears more types of data and is more thorough than the
 `clearStorageData` method.
 
 **Note:** Cookies are stored at a broader scope than origins. When removing cookies and filtering by `origins` (or `excludeOrigins`), the cookies will be removed at the [registrable domain](https://url.spec.whatwg.org/#host-registrable-domain) level. For example, clearing cookies for the origin `https://really.specific.origin.example.com/` will end up clearing all cookies for `example.com`. Clearing cookies for the origin `https://my.website.example.co.uk/` will end up clearing all cookies for `example.co.uk`.

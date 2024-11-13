@@ -4,8 +4,9 @@
 
 #include "shell/browser/electron_browser_context.h"
 
+#include <algorithm>
 #include <memory>
-
+#include <optional>
 #include <utility>
 
 #include "base/barrier_closure.h"
@@ -17,6 +18,7 @@
 #include "base/strings/escape.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "chrome/browser/predictors/preconnect_manager.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
@@ -35,6 +37,7 @@
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents_media_capture_id.h"
+#include "gin/arguments.h"
 #include "media/audio/audio_device_description.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/url_loader_factory_builder.h"
@@ -48,8 +51,10 @@
 #include "shell/browser/file_system_access/file_system_access_permission_context_factory.h"
 #include "shell/browser/net/resolve_proxy_helper.h"
 #include "shell/browser/protocol_registry.h"
+#include "shell/browser/serial/serial_chooser_context.h"
 #include "shell/browser/special_storage_policy.h"
 #include "shell/browser/ui/inspectable_web_contents.h"
+#include "shell/browser/ui/webui/accessibility_ui.h"
 #include "shell/browser/web_contents_permission_helper.h"
 #include "shell/browser/web_view_manager.h"
 #include "shell/browser/zoom_level_delegate.h"
@@ -57,6 +62,7 @@
 #include "shell/common/electron_constants.h"
 #include "shell/common/electron_paths.h"
 #include "shell/common/gin_converters/frame_converter.h"
+#include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/options_switches.h"
 #include "shell/common/thread_restrictions.h"
@@ -123,7 +129,7 @@ media::mojom::CaptureHandlePtr CreateCaptureHandle(
 
   const auto& captured_config = captured->GetCaptureHandleConfig();
   if (!captured_config.all_origins_permitted &&
-      base::ranges::none_of(
+      std::ranges::none_of(
           captured_config.permitted_origins,
           [capturer_origin](const url::Origin& permitted_origin) {
             return capturer_origin.IsSameOriginWith(permitted_origin);
@@ -155,24 +161,24 @@ media::mojom::CaptureHandlePtr CreateCaptureHandle(
 }
 
 // Copied from chrome/browser/media/webrtc/desktop_capture_devices_util.cc.
-absl::optional<int> GetZoomLevel(content::WebContents* capturer,
-                                 const url::Origin& capturer_origin,
-                                 const content::DesktopMediaID& captured_id) {
+std::optional<int> GetZoomLevel(content::WebContents* capturer,
+                                const url::Origin& capturer_origin,
+                                const content::DesktopMediaID& captured_id) {
   content::RenderFrameHost* const captured_rfh =
       content::RenderFrameHost::FromID(
           captured_id.web_contents_id.render_process_id,
           captured_id.web_contents_id.main_render_frame_id);
   if (!captured_rfh || !captured_rfh->IsActive()) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
   content::WebContents* const captured_wc =
       content::WebContents::FromRenderFrameHost(captured_rfh);
   if (!captured_wc) {
-    return absl::nullopt;
+    return std::nullopt;
   }
 
-  double zoom_level = blink::PageZoomLevelToZoomFactor(
+  double zoom_level = blink::ZoomLevelToZoomFactor(
       content::HostZoomMap::GetZoomLevel(captured_wc));
   return std::round(100 * zoom_level);
 }
@@ -370,6 +376,12 @@ ElectronBrowserContext::ElectronBrowserContext(
 ElectronBrowserContext::~ElectronBrowserContext() {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   NotifyWillBeDestroyed();
+
+#if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
+  // the DestroyBrowserContextServices() call below frees this.
+  extension_system_ = nullptr;
+#endif
+
   // Notify any keyed services of browser context destruction.
   BrowserContextDependencyManager::GetInstance()->DestroyBrowserContextServices(
       this);
@@ -413,6 +425,7 @@ void ElectronBrowserContext::InitPrefs() {
   MediaDeviceIDSalt::RegisterPrefs(registry.get());
   ZoomLevelDelegate::RegisterPrefs(registry.get());
   PrefProxyConfigTrackerImpl::RegisterPrefs(registry.get());
+  ElectronAccessibilityUIMessageHandler::RegisterPrefs(registry.get());
 #if BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS)
   if (!in_memory_)
     extensions::ExtensionPrefs::RegisterProfilePrefs(registry.get());
@@ -460,7 +473,7 @@ bool ElectronBrowserContext::IsOffTheRecord() {
 }
 
 std::string ElectronBrowserContext::GetMediaDeviceIDSalt() {
-  if (!media_device_id_salt_.get())
+  if (!media_device_id_salt_)
     media_device_id_salt_ = std::make_unique<MediaDeviceIDSalt>(prefs_.get());
   return media_device_id_salt_->GetSalt();
 }
@@ -476,10 +489,9 @@ ElectronBrowserContext::CreateZoomLevelDelegate(
 
 content::DownloadManagerDelegate*
 ElectronBrowserContext::GetDownloadManagerDelegate() {
-  if (!download_manager_delegate_.get()) {
-    auto* download_manager = this->GetDownloadManager();
+  if (!download_manager_delegate_) {
     download_manager_delegate_ =
-        std::make_unique<ElectronDownloadManagerDelegate>(download_manager);
+        std::make_unique<ElectronDownloadManagerDelegate>(GetDownloadManager());
   }
   return download_manager_delegate_.get();
 }
@@ -497,7 +509,7 @@ ElectronBrowserContext::GetPlatformNotificationService() {
 
 content::PermissionControllerDelegate*
 ElectronBrowserContext::GetPermissionControllerDelegate() {
-  if (!permission_manager_.get())
+  if (!permission_manager_)
     permission_manager_ = std::make_unique<ElectronPermissionManager>();
   return permission_manager_.get();
 }
@@ -512,7 +524,7 @@ std::string ElectronBrowserContext::GetUserAgent() const {
 }
 
 predictors::PreconnectManager* ElectronBrowserContext::GetPreconnectManager() {
-  if (!preconnect_manager_.get()) {
+  if (!preconnect_manager_) {
     preconnect_manager_ =
         std::make_unique<predictors::PreconnectManager>(nullptr, this);
   }
@@ -533,8 +545,9 @@ ElectronBrowserContext::GetURLLoaderFactory() {
       ->WillCreateURLLoaderFactory(
           this, nullptr, -1,
           content::ContentBrowserClient::URLLoaderFactoryType::kNavigation,
-          url::Origin(), std::nullopt, ukm::kInvalidSourceIdObj,
-          factory_builder, &header_client, nullptr, nullptr, nullptr, nullptr);
+          url::Origin(), net::IsolationInfo(), std::nullopt,
+          ukm::kInvalidSourceIdObj, factory_builder, &header_client, nullptr,
+          nullptr, nullptr, nullptr);
 
   network::mojom::URLLoaderFactoryParamsPtr params =
       network::mojom::URLLoaderFactoryParams::New();
@@ -602,8 +615,7 @@ ElectronBrowserContext::GetFileSystemAccessPermissionContext() {
 
 ResolveProxyHelper* ElectronBrowserContext::GetResolveProxyHelper() {
   if (!resolve_proxy_helper_) {
-    resolve_proxy_helper_ = base::MakeRefCounted<ResolveProxyHelper>(
-        GetDefaultStoragePartition()->GetNetworkContext());
+    resolve_proxy_helper_ = base::MakeRefCounted<ResolveProxyHelper>(this);
   }
   return resolve_proxy_helper_.get();
 }

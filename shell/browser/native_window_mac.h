@@ -12,8 +12,9 @@
 #include <string>
 #include <vector>
 
-#include "electron/shell/common/api/api.mojom.h"
+#include "base/memory/raw_ptr.h"
 #include "shell/browser/native_window.h"
+#include "third_party/skia/include/core/SkRegion.h"
 #include "ui/display/display_observer.h"
 #include "ui/native_theme/native_theme_observer.h"
 #include "ui/views/controls/native/native_view_host.h"
@@ -125,7 +126,7 @@ class NativeWindowMac : public NativeWindow,
                                  bool skipTransformProcessType) override;
   bool IsVisibleOnAllWorkspaces() const override;
   void SetAutoHideCursor(bool auto_hide) override;
-  void SetVibrancy(const std::string& type) override;
+  void SetVibrancy(const std::string& type, int duration) override;
   void SetWindowButtonVisibility(bool visible) override;
   bool GetWindowButtonVisibility() const override;
   void SetWindowButtonPosition(std::optional<gfx::Point> position) override;
@@ -165,6 +166,7 @@ class NativeWindowMac : public NativeWindow,
   void DetachChildren() override;
 
   void NotifyWindowWillEnterFullScreen();
+  void NotifyWindowDidFailToEnterFullScreen();
   void NotifyWindowWillLeaveFullScreen();
 
   // Cleanup observers when window is getting closed. Note that the destructor
@@ -298,6 +300,9 @@ class NativeWindowMac : public NativeWindow,
   NSRect default_frame_for_zoom_;
 
   std::string vibrancy_type_;
+
+  // A views::NativeViewHost wrapping the vibrant view. Owned by the root view.
+  raw_ptr<views::NativeViewHost> vibrant_native_view_host_ = nullptr;
 
   // The presentation options before entering simple fullscreen mode.
   NSApplicationPresentationOptions simple_fullscreen_options_;

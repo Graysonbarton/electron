@@ -9,12 +9,12 @@
 
 #include "base/containers/contains.h"
 #include "base/observer_list.h"
-#include "base/observer_list_types.h"
 #include "base/scoped_observation.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "electron/buildflags/buildflags.h"
 #include "services/device/public/mojom/usb_enumeration_options.mojom.h"
+#include "shell/browser/electron_browser_context.h"
 #include "shell/browser/electron_permission_manager.h"
 #include "shell/browser/usb/usb_chooser_context.h"
 #include "shell/browser/usb/usb_chooser_context_factory.h"
@@ -88,13 +88,14 @@ namespace electron {
 
 // Manages the UsbDelegate observers for a single browser context.
 class ElectronUsbDelegate::ContextObservation
-    : public UsbChooserContext::DeviceObserver {
+    : private UsbChooserContext::DeviceObserver {
  public:
   ContextObservation(ElectronUsbDelegate* parent,
                      content::BrowserContext* browser_context)
       : parent_(parent), browser_context_(browser_context) {
     auto* chooser_context = GetChooserContext(browser_context_);
-    device_observation_.Observe(chooser_context);
+    if (chooser_context)
+      device_observation_.Observe(chooser_context);
   }
   ContextObservation(ContextObservation&) = delete;
   ContextObservation& operator=(ContextObservation&) = delete;
@@ -174,6 +175,9 @@ std::unique_ptr<content::UsbChooser> ElectronUsbDelegate::RunChooser(
 bool ElectronUsbDelegate::CanRequestDevicePermission(
     content::BrowserContext* browser_context,
     const url::Origin& origin) {
+  if (!browser_context)
+    return false;
+
   base::Value::Dict details;
   details.Set("securityOrigin", origin.GetURL().spec());
   auto* permission_manager = static_cast<ElectronPermissionManager*>(
@@ -188,32 +192,46 @@ void ElectronUsbDelegate::RevokeDevicePermissionWebInitiated(
     content::BrowserContext* browser_context,
     const url::Origin& origin,
     const device::mojom::UsbDeviceInfo& device) {
-  GetChooserContext(browser_context)
-      ->RevokeDevicePermissionWebInitiated(origin, device);
+  auto* chooser_context = GetChooserContext(browser_context);
+  if (chooser_context) {
+    chooser_context->RevokeDevicePermissionWebInitiated(origin, device);
+  }
 }
 
 const device::mojom::UsbDeviceInfo* ElectronUsbDelegate::GetDeviceInfo(
     content::BrowserContext* browser_context,
     const std::string& guid) {
-  return GetChooserContext(browser_context)->GetDeviceInfo(guid);
+  auto* chooser_context = GetChooserContext(browser_context);
+  if (!chooser_context)
+    return nullptr;
+  return chooser_context->GetDeviceInfo(guid);
 }
 
 bool ElectronUsbDelegate::HasDevicePermission(
     content::BrowserContext* browser_context,
     content::RenderFrameHost* frame,
     const url::Origin& origin,
-    const device::mojom::UsbDeviceInfo& device) {
-  if (IsDevicePermissionAutoGranted(origin, device))
+    const device::mojom::UsbDeviceInfo& device_info) {
+  if (IsDevicePermissionAutoGranted(origin, device_info))
     return true;
 
+  auto* chooser_context = GetChooserContext(browser_context);
+  if (!chooser_context)
+    return false;
+
   return GetChooserContext(browser_context)
-      ->HasDevicePermission(origin, device);
+      ->HasDevicePermission(origin, device_info);
 }
 
 void ElectronUsbDelegate::GetDevices(
     content::BrowserContext* browser_context,
     blink::mojom::WebUsbService::GetDevicesCallback callback) {
-  GetChooserContext(browser_context)->GetDevices(std::move(callback));
+  auto* chooser_context = GetChooserContext(browser_context);
+  if (!chooser_context) {
+    std::move(callback).Run(std::vector<device::mojom::UsbDeviceInfoPtr>());
+    return;
+  }
+  chooser_context->GetDevices(std::move(callback));
 }
 
 void ElectronUsbDelegate::GetDevice(
@@ -222,25 +240,35 @@ void ElectronUsbDelegate::GetDevice(
     base::span<const uint8_t> blocked_interface_classes,
     mojo::PendingReceiver<device::mojom::UsbDevice> device_receiver,
     mojo::PendingRemote<device::mojom::UsbDeviceClient> device_client) {
-  GetChooserContext(browser_context)
-      ->GetDevice(guid, blocked_interface_classes, std::move(device_receiver),
-                  std::move(device_client));
+  auto* chooser_context = GetChooserContext(browser_context);
+  if (chooser_context) {
+    chooser_context->GetDevice(guid, blocked_interface_classes,
+                               std::move(device_receiver),
+                               std::move(device_client));
+  }
 }
 
 void ElectronUsbDelegate::AddObserver(content::BrowserContext* browser_context,
                                       Observer* observer) {
+  if (!browser_context)
+    return;
+
   GetContextObserver(browser_context)->AddObserver(observer);
 }
 
 void ElectronUsbDelegate::RemoveObserver(
     content::BrowserContext* browser_context,
     Observer* observer) {
+  if (!browser_context)
+    return;
+
   GetContextObserver(browser_context)->RemoveObserver(observer);
 }
 
 ElectronUsbDelegate::ContextObservation*
 ElectronUsbDelegate::GetContextObserver(
     content::BrowserContext* browser_context) {
+  CHECK(browser_context);
   if (!base::Contains(observations_, browser_context)) {
     observations_.emplace(browser_context, std::make_unique<ContextObservation>(
                                                this, browser_context));

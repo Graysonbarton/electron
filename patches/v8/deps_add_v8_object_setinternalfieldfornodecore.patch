@@ -11,7 +11,7 @@ This is a non-ABI breaking solution added by Node.js in v20.x for:
 which are necessary for backporting the vm-related memory fixes in https://github.com/nodejs/node/pull/48510.
 
 diff --git a/include/v8-object.h b/include/v8-object.h
-index 71143425c6565f0200ee2e9ed604b380101425bc..948ab16a4a52245c90316f33e145e86c3eb44f00 100644
+index 3e57ae8efe33f326ef0e5d609c311d4be5b8afd6..dc521d39c2280dfc3217e97c1e413b2be9b4f7ff 100644
 --- a/include/v8-object.h
 +++ b/include/v8-object.h
 @@ -22,6 +22,8 @@ class Function;
@@ -23,7 +23,7 @@ index 71143425c6565f0200ee2e9ed604b380101425bc..948ab16a4a52245c90316f33e145e86c
  
  /**
   * A private symbol
-@@ -513,6 +515,21 @@ class V8_EXPORT Object : public Value {
+@@ -532,6 +534,21 @@ class V8_EXPORT Object : public Value {
          index);
    }
  
@@ -46,11 +46,11 @@ index 71143425c6565f0200ee2e9ed604b380101425bc..948ab16a4a52245c90316f33e145e86c
    V8_INLINE static void* GetAlignedPointerFromInternalField(
        const BasicTracedReference<Object>& object, int index) {
 diff --git a/src/api/api.cc b/src/api/api.cc
-index de3cbcb674abed22c02aa1d0d5641e0e78b1fd3e..f09b87229d3e517f0ec82c6c16018a6dede515df 100644
+index 5554984791dad9317c51daf3a154396c1fff9d41..c472c749cb782b7a444d3afc2d44f4560cc079d5 100644
 --- a/src/api/api.cc
 +++ b/src/api/api.cc
-@@ -6216,14 +6216,33 @@ Local<Data> v8::Object::SlowGetInternalField(int index) {
-       isolate);
+@@ -6419,14 +6419,33 @@ Local<Data> v8::Object::SlowGetInternalField(int index) {
+       i::Cast<i::JSObject>(*obj)->GetEmbedderField(index), isolate));
  }
  
 -void v8::Object::SetInternalField(int index, v8::Local<Data> value) {
@@ -61,7 +61,7 @@ index de3cbcb674abed22c02aa1d0d5641e0e78b1fd3e..f09b87229d3e517f0ec82c6c16018a6d
    const char* location = "v8::Object::SetInternalField()";
    if (!InternalFieldOK(obj, index, location)) return;
    auto val = Utils::OpenDirectHandle(*value);
-   i::DirectHandle<i::JSObject>::cast(obj)->SetEmbedderField(index, *val);
+   i::Cast<i::JSObject>(obj)->SetEmbedderField(index, *val);
  }
  
 +void v8::Object::SetInternalField(int index, v8::Local<Data> value) {
