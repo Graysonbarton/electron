@@ -56,7 +56,7 @@
     "husky": "^8.0.1",
     "klaw": "^3.0.0",
     "lint": "^1.1.2",
-    "lint-staged": "^10.2.11",
+    "lint-staged": "^16.0.0",
     "minimist": "^1.2.6",
     "null-loader": "^4.0.0",
     "pre-flight": "^1.1.0",
